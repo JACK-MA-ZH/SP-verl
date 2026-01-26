@@ -1,0 +1,21 @@
+# verl/tools/config/drc_tools.yaml
+tools:
+  - class_name: verl.tools.drc_tools.MovePolygonTool
+    config:
+      type: "native"
+      name: "op_move_polygon"
+
+  - class_name: verl.tools.drc_tools.DeletePolygonTool
+    config:
+      type: "native"
+      name: "op_delete_polygon"
+
+  - class_name: verl.tools.drc_tools.OffsetPolygonTool
+    config:
+      type: "native"
+      name: "op_offset_polygon"
+
+  - class_name: verl.tools.drc_tools.SplitPolygonTool
+    config:
+      type: "native"
+      name: "op_split_polygon"

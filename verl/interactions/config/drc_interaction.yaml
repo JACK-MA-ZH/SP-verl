@@ -1,0 +1,4 @@
+interaction:
+  - name: "drc_interaction"
+    class_name: "verl.interactions.drc_interaction.DRCInteraction"
+    config: {}

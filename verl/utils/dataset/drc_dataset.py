@@ -1,89 +1,49 @@
+# verl/utils/dataset/drc_dataset.py
 
 import logging
 from typing import Optional
-
 import pandas as pd
-import torch
-from omegaconf import DictConfig, ListConfig
+from omegaconf import DictConfig
 from PIL import Image
-from transformers import PreTrainedTokenizer, ProcessorMixin
-
 from verl.utils.dataset.rl_dataset import RLHFDataset
 from verl.utils.fs import copy_to_local
 
-logger = logging.getLogger(__name__)
-
 class DRCDataset(RLHFDataset):
-    """
-    Dataset for the DRC generation and fixing task.
-    Each item provides:
-    - The initial "clean" layout as an image and a GDS file path.
-    - A text prompt for the generator agent, describing the DRC error to create.
-    """
-
-    def __init__(
-        self,
-        data_files: str | list[str] | ListConfig,
-        tokenizer: PreTrainedTokenizer,
-        config: DictConfig,
-        processor: Optional[ProcessorMixin] = None,
-        max_samples: int = -1,
-    ):
-        # We will reuse the RLHFDataset's initialization for file handling
-        # but override the item retrieval logic.
+    def __init__(self, data_files, tokenizer, config, processor=None, max_samples=-1):
         super().__init__(data_files, tokenizer, config, processor, max_samples)
-
-        # Ensure required columns exist
-        required_columns = ["clean_layout_png_path", "clean_layout_gds_path", "generation_prompt"]
-        for col in required_columns:
-            if col not in self.dataframe.column_names:
-                raise ValueError(f"Required column '{col}' not found in the dataset.")
-
-        print(f"DRC Dataset loaded with {len(self)} samples.")
 
     def __getitem__(self, item_index: int) -> dict:
         row = self.dataframe[item_index]
 
-        # Load the initial clean layout image
+        # 1. 加载图片
         try:
             image_path = copy_to_local(row["clean_layout_png_path"], use_shm=self.use_shm)
             image = Image.open(image_path).convert("RGB")
-        except Exception as e:
-            logger.error(f"Failed to load image for index {item_index} at path {row['clean_layout_png_path']}: {e}")
-            # Return a dummy image to avoid crashing the training loop
-            image = Image.new('RGB', (224, 224), color = 'red')
+        except Exception:
+            image = Image.new('RGB', (224, 224), color='red')
 
-
-        # The prompt for the generator agent
-        # The prompt for the fixer agent will be created dynamically in the training loop
-        generation_prompt = row["generation_prompt"]
-
-        # The multi-modal data includes the initial image and paths to GDS files
-        # The DRCInteraction will handle the GDS file loading.
-        multi_modal_data = {
-            "image": [image],
-            "clean_gds_path": row["clean_layout_gds_path"],
-        }
+        # 2. [简化] 不需要手动拼接 System Prompt
+        # 直接返回用户的原始指令，verl 会自动处理工具定义
+        raw_prompt = [
+            {"role": "user", "content": row["generation_prompt"]}
+        ]
         
-        # The `raw_prompt` will be a list of conversation turns. For the generator,
-        # it starts with the initial instruction.
-        raw_prompt = [{"role": "user", "content": generation_prompt}]
+        # Fixer 的 Prompt 同理
+        fix_prompt = [
+             {"role": "user", "content": "The previous layout had errors. Please fix them."}
+        ]
 
-        # Other metadata needed by the reward function or interaction
-        extra_info = {
-            "target_drc_rule": row.get("target_drc_rule", "UNKNOWN"),
-        }
-
-        # The fixer will need a static prompt, which we define here for consistency
-        fix_prompt = "You are a DRC fixing expert. The following layout has DRC violations. Please fix them using the provided tools."
-        
         return {
-            "raw_prompt": raw_prompt, # For generator
-            "fix_prompt": fix_prompt, # For fixer
-            "multi_modal_data": multi_modal_data,
-            "extra_info": extra_info,
-            "data_source": row.get("data_source", "drc_task"), # For reward function dispatch
-            # Add a unique identifier for the sample
+            "raw_prompt": raw_prompt,
+            "fix_prompt": fix_prompt,
+            "multi_modal_data": {
+                "image": [image],
+                "clean_gds_path": row["clean_layout_gds_path"],
+            },
+            "extra_info": {
+                "target_drc_rule": row.get("target_drc_rule", "UNKNOWN"),
+            },
+            "data_source": row.get("data_source", "drc_task"),
             "uid": row.get("uid", f"drc_sample_{item_index}")
         }
 
