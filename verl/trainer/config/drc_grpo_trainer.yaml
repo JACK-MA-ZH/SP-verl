@@ -7,12 +7,12 @@ trainer:
   project_name: drc_adversarial_rl
   experiment_name: drc_gen_vs_fix_grpo
   total_epochs: 100
-  n_gpus_per_node: 8 # Example, adjust as needed
+  n_gpus_per_node: 1 # Example, adjust as needed
 
 data:
   _target_: verl.utils.dataset.drc_dataset.DRCDataset
-  train_files: /path/to/your/drc_train_data.parquet
-  val_files: /path/to/your/drc_val_data.parquet
+  train_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/train.parquet
+  val_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/val.parquet
   prompt_key: generation_prompt # From the dataset file
   max_prompt_length: 512
   max_response_length: 1024
@@ -20,7 +20,7 @@ data:
 
 actor_rollout_ref:
   model:
-    path: Qwen/Qwen2.5-VL-7B-Instruct
+    path: ./Qwen2.5-VL-3B-Instruct
     # ... 其他模型配置
   
   rollout:
