@@ -4,7 +4,7 @@ import logging
 import os
 from collections import deque
 from typing import Any
-
+from tensordict import TensorDict
 import numpy as np
 import torch
 
@@ -90,13 +90,14 @@ class DRCRewardManager(AbstractRewardManager):
             self._adjust_dynamic_weights()
             
             # --- Assign sparse rewards to the reward tensor ---
-            gen_resp_len = gen_traj.batch["attention_mask"][gen_traj.batch["prompts"].shape[-1]:].sum()
-            fix_resp_len = fix_traj.batch["attention_mask"][fix_traj.batch["prompts"].shape[-1]:].sum()
-
-            if gen_resp_len > 0:
-                reward_tensor[i, gen_resp_len - 1] = final_r_gen
-            if fix_resp_len > 0:
-                reward_tensor[i + 1, fix_resp_len - 1] = final_r_fix
+            gen_response_mask = gen_traj.batch["attention_mask"][gen_traj.batch["prompts"].shape[-1]:]
+            fix_response_mask = fix_traj.batch["attention_mask"][fix_traj.batch["prompts"].shape[-1]:]
+            gen_valid_len = int(gen_response_mask.sum().item())
+            fix_valid_len = int(fix_response_mask.sum().item())
+            if gen_valid_len > 0:
+                reward_tensor[i, gen_valid_len - 1] = final_r_gen
+            if fix_valid_len > 0:
+                reward_tensor[i + 1, fix_valid_len - 1] = final_r_fix
 
             # Logging for debugging
             if self.print_count < self.num_examine:
@@ -130,33 +131,35 @@ if __name__ == "__main__":
 
     # Mock DataProto for one pair of episodes
     mock_batch = {
-        # Generator trajectory
         "prompts": torch.zeros(2, 10, dtype=torch.long),
         "responses": torch.zeros(2, 20, dtype=torch.long),
         "attention_mask": torch.cat([torch.ones(2, 10), torch.ones(2, 20)], dim=1),
     }
     mock_non_tensor = {
-        # Generator trajectory
-        "drc_errors_after": np.array([5, 0]), # N_before for the fixer
-        "num_fix_ops": np.array([0, 12]), # N_fix_ops is from the fixer
-        # Fixer trajectory
+        "drc_errors_after": np.array([5, 0]), 
+        "num_fix_ops": np.array([0, 12]), 
         "drc_errors_before": np.array([5, 0]),
     }
+    
     data = DataProto(
         batch=TensorDict(mock_batch, batch_size=[2]),
         non_tensor_batch=mock_non_tensor
     )
     
     # Simulate a few steps
-    for _ in range(3):
-        # In a real scenario, the errors/ops would change
-        data.non_tensor_batch["drc_errors_after"][1] = 0 # Fixer succeeds
-        reward_dict = manager(data, return_dict=True)
-        print("\nCalculated Reward Tensor:\n", reward_dict["reward_tensor"])
-        
-        data.non_tensor_batch["drc_errors_after"][1] = 2 # Fixer fails partially
-        reward_dict = manager(data, return_dict=True)
-        print("\nCalculated Reward Tensor:\n", reward_dict["reward_tensor"])
+    print("\n--- Test 1: Fixer Succeeds ---")
+    data.non_tensor_batch["drc_errors_after"][1] = 0 
+    reward_dict = manager(data, return_dict=True)
+    
+    # Indices must be correct now
+    print("Gen Reward:", reward_dict["reward_tensor"][0, 19].item())
+    print("Fix Reward:", reward_dict["reward_tensor"][1, 19].item())
+    
+    print("\n--- Test 2: Fixer Fails ---")
+    data.non_tensor_batch["drc_errors_after"][1] = 2 
+    reward_dict = manager(data, return_dict=True)
+    print("Gen Reward:", reward_dict["reward_tensor"][0, 19].item())
+    print("Fix Reward:", reward_dict["reward_tensor"][1, 19].item())
 
     print("\nDRCRewardManager test completed.")
 
