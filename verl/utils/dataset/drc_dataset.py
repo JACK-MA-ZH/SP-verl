@@ -36,13 +36,13 @@ class DRCDataset(RLHFDataset):
         # Ensure required columns exist
         required_columns = ["clean_layout_png_path", "clean_layout_gds_path", "generation_prompt"]
         for col in required_columns:
-            if col not in self.dataframe.columns:
+            if col not in self.dataframe.column_names:
                 raise ValueError(f"Required column '{col}' not found in the dataset.")
 
         print(f"DRC Dataset loaded with {len(self)} samples.")
 
     def __getitem__(self, item_index: int) -> dict:
-        row = self.dataframe.iloc[item_index].to_dict()
+        row = self.dataframe[item_index]
 
         # Load the initial clean layout image
         try:
@@ -123,23 +123,22 @@ if __name__ == '__main__':
         
         tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
 
-        try:
-            dataset = DRCDataset(parquet_files=[parquet_path], tokenizer=tokenizer, config=test_config)
-            print(f"Dataset length: {len(dataset)}")
-            sample = dataset[0]
-            print("\nSample item:")
-            for key, value in sample.items():
-                if key == "multi_modal_data":
-                    print(f"  {key}:")
-                    for sub_key, sub_value in value.items():
-                        print(f"    {sub_key}: {type(sub_value)}")
-                else:
-                    print(f"  {key}: {value}")
-            assert "raw_prompt" in sample
-            assert "fix_prompt" in sample
-            assert "multi_modal_data" in sample
-            assert "image" in sample["multi_modal_data"]
-            print("\nDRCDataset test passed!")
-        except Exception as e:
-            print(f"\nDRCDataset test failed: {e}")
+  
+        dataset = DRCDataset(data_files=[parquet_path], tokenizer=tokenizer, config=test_config)
+        print(f"Dataset length: {len(dataset)}")
+        sample = dataset[0]
+        print("\nSample item:")
+        for key, value in sample.items():
+            if key == "multi_modal_data":
+                print(f"  {key}:")
+                for sub_key, sub_value in value.items():
+                    print(f"    {sub_key}: {type(sub_value)}")
+            else:
+                print(f"  {key}: {value}")
+        assert "raw_prompt" in sample
+        assert "fix_prompt" in sample
+        assert "multi_modal_data" in sample
+        assert "image" in sample["multi_modal_data"]
+        print("\nDRCDataset test passed!")
+        
 
