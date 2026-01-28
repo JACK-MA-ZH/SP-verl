@@ -1,50 +1,97 @@
-# verl/trainer/config/drc_grpo_trainer.yaml
 defaults:
   - ppo_trainer
   - _self_
 
 trainer:
   project_name: drc_adversarial_rl
-  experiment_name: drc_gen_vs_fix_grpo
-  total_epochs: 100
-  n_gpus_per_node: 1 # Example, adjust as needed
+  experiment_name: drc_gen_vs_fix_grpo_v2
+  total_epochs: 15
+  n_gpus_per_node: 1
+  nnodes: 1
+  save_freq: 5
+  test_freq: 5
+  logger: ["console"]
 
+# 1. 数据配置
 data:
   _target_: verl.utils.dataset.drc_dataset.DRCDataset
   train_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/train.parquet
   val_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/val.parquet
-  prompt_key: generation_prompt # From the dataset file
-  max_prompt_length: 512
-  max_response_length: 1024
-  train_batch_size: 32 # This will be the number of "episode pairs" per step
+  prompt_key: generation_prompt
+  max_prompt_length: 4096
+  max_response_length: 4096
+  train_batch_size: 64  # 全局 Batch Size (PPO update step size)
+  filter_overlong_prompts: True
+  truncation: error
 
+# 2. 算法配置 (GRPO)
+algorithm:
+  adv_estimator: grpo
+  use_kl_in_reward: False
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.001
+
+# 3. 核心配置：Actor, Rollout, Ref Model
 actor_rollout_ref:
   model:
-    path: ./Qwen2.5-VL-3B-Instruct
-    # ... 其他模型配置
-  
-  rollout:
-    name: vllm # 或 sglang，推荐 vllm 对于 Qwen2.5-VL 支持较好
-    gpu_memory_utilization: 0.6
+    path: /inspire/hdd/global_user/wuyouran-253108540218/llm/Qwen2.5-VL-3B-Instruct
+    use_remove_padding: True
+    enable_gradient_checkpointing: True
+    # LoRA 配置
+    lora_rank: 64
+    lora_alpha: 32
+    target_modules: all-linear
+    exclude_modules: '.*visual.*' # 避免对视觉编码器进行 LoRA，节省显存
+
+  # --- [FIXED] PPO Actor 配置 (补全了缺失的 batch size) ---
+  actor:
+    optim:
+      lr: 3e-6
+    # 关键参数：防止 Assertion Error
+    ppo_mini_batch_size: 64            # 每次 PPO 更新的数据块大小
+    ppo_micro_batch_size_per_gpu: 4     # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
+    use_kl_loss: True
+    kl_loss_coef: 0.01
+    kl_loss_type: low_var_kl
+    entropy_coeff: 0.0
     
-    # [核心配置] 启用原生 Multi-turn Tool Support
+    # FSDP 策略 (显存优化)
+    fsdp_config:
+      param_offload: False
+      optimizer_offload: False
+      wrap_policy:
+        # transformer_layer_cls_to_wrap: [Qwen2VLDecoderLayer] # 根据模型结构自动推断，通常不需要手写
+
+  # --- Rollout 配置 (vLLM / SGLang) ---
+  rollout:
+    name: vllm
+    gpu_memory_utilization: 0.5  # 留一半显存给 Training Actor
+    tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
+    
+    # [关键] GRPO 需要多次采样来计算 Baseline
+    n: 5  # 每个 Prompt 生成 5 条回复
+    
+    # 推理时的 Batch Size
+    log_prob_micro_batch_size_per_gpu: 16
+    
+    # 启用 Multi-turn Tool Support
     multi_turn:
       enable: true
       max_assistant_turns: 5
-      
-      # 告诉 verl 工具定义在哪里，它会自动生成 System Prompt
       tool_config_path: verl/tools/config/drc_tools.yaml
-      
-      # 告诉 verl 交互环境在哪里
       interaction_config_path: verl/interactions/config/drc_interaction.yaml
-      
-      # 这里的 format 决定了 verl 如何渲染 prompt
-      # 对于 Qwen2.5，这会让 verl 使用 chat template 自动处理 tool tokens
       format: qwen-vl
-    
-algorithm:
-  adv_estimator: grpo # Use GRPO as requested
 
+  # --- Ref Model 配置 (通常 Offload 到 CPU 省显存) ---
+  ref:
+    log_prob_micro_batch_size_per_gpu: 16
+    fsdp_config:
+      param_offload: True  # 将 Ref 模型参数卸载到 CPU
+
+# 4. 奖励配置
 reward_model:
-  enable: false # We are using a custom reward manager, not a separate RM model
-  reward_manager: drc # This key registers our DRCRewardManager
+  enable: false
+  reward_manager: drc
+  reward_manager_config:
+    num_examine: 1

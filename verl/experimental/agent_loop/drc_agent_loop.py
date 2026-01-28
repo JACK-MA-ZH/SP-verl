@@ -43,6 +43,9 @@ class DRCAgentLoop(ToolAgentLoop):
     """
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         # Initial prompt for the generator
+        # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
+        # kwargs 是从 DataProto.non_tensor_batch 中解包出来的单个样本数据
+        uid = kwargs.get("uid", f"unknown_{uuid4().hex}")
         messages = list(kwargs["raw_prompt"])
         # Initial layout image and GDS path
         multi_modal_data = kwargs["multi_modal_data"]
@@ -85,6 +88,21 @@ class DRCAgentLoop(ToolAgentLoop):
         final_state = agent_data.interaction._instance_dict.get(request_id, {})
         agent_data.drc_errors_at_end = final_state.get("drc_errors", -1)
         agent_data.fix_ops_count = final_state.get("fix_ops_count", 0)
+        
+        # 2. [关键修改] Loop 结束后，保存 GDS 状态到磁盘
+        # 这样 Trainer 只需要知道 UID 就能找到对应的 GDS，不需要回传路径
+        save_dir = "/tmp/drc_generated_layouts"
+        os.makedirs(save_dir, exist_ok=True)
+        gds_save_path = os.path.join(save_dir, f"{uid}.gds")
+        # 调用 Interaction 的保存功能 (需要确保 Interaction 有这个接口，或者直接用 component write)
+        final_state = agent_data.interaction._instance_dict.get(request_id, {})
+        if "component" in final_state:
+            final_state["component"].write_gds(gds_save_path)
+        
+        agent_data.drc_errors_at_end = final_state.get("drc_errors", -1)
+        agent_data.fix_ops_count = final_state.get("fix_ops_count", 0)
+
+ 
 
         await interaction.release(request_id)
         
@@ -92,6 +110,15 @@ class DRCAgentLoop(ToolAgentLoop):
         response_ids = agent_data.prompt_ids[-len(agent_data.response_mask) :]
         prompt_ids = agent_data.prompt_ids[: len(agent_data.prompt_ids) - len(agent_data.response_mask)]
 
+        metrics_to_return = {
+            "drc_errors_before": agent_data.drc_errors_at_start,
+            "drc_errors_after": agent_data.drc_errors_at_end,
+            "num_fix_ops": agent_data.fix_ops_count,
+            # 我们甚至可以把路径放在这里，但 metrics 通常存数值，存字符串可能有风险
+            # 不过我们已经有了确定性的路径策略 (UID)，所以这里不需要存路径
+        }
+        metrics_to_return.update(agent_data.metrics)
+        
         output = AgentLoopOutput(
             prompt_ids=prompt_ids,
             response_ids=response_ids[:self.response_length],
@@ -99,12 +126,8 @@ class DRCAgentLoop(ToolAgentLoop):
             multi_modal_data={"image": agent_data.image_data},
             response_logprobs=agent_data.response_logprobs[:self.response_length] if agent_data.response_logprobs else None,
             num_turns=len(agent_data.messages),
-            metrics=agent_data.metrics,
-            extra_fields={
-                "drc_errors_before": agent_data.drc_errors_at_start,
-                "drc_errors_after": agent_data.drc_errors_at_end,
-                "num_fix_ops": agent_data.fix_ops_count,
-            }
+            metrics=metrics_to_return,
+            
         )
         return output
 

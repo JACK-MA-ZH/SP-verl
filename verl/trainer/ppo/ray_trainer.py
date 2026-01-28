@@ -35,6 +35,12 @@ from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 
+
+from PIL import Image
+from torch.nn.utils.rnn import pad_sequence
+from tensordict import TensorDict
+
+
 from verl import DataProto
 from verl.experimental.dataset.sampler import AbstractCurriculumSampler
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
@@ -953,81 +959,107 @@ class RayPPOTrainer:
         )
         metrics.update(global_balance_stats)
     def _run_drc_episode_and_prepare_batch(self, batch: DataProto) -> tuple[DataProto, dict]:
-        """
-        Runs the full DRC generation and fixing episode for a batch and prepares
-        the combined trajectory for PPO update.
-        """
         timing_raw = {}
         
-        # --- STAGE 1: Generator (π_gen) Episode ---
+        # --- STAGE 1: Generator Episode ---
         with marked_timer("gen_episode_rollout", timing_raw, color="red"):
-            # The initial `batch` from dataloader is the prompt for the generator
             gen_batch_output = self.actor_rollout_wg.generate_sequences(batch)
         
-        # Extract the final layout state (image, gds path, etc.) from the generator's output.
-        # This requires the DRCAgentLoop to correctly place this info in `extra_fields`.
-        final_gen_states = gen_batch_output.non_tensor_batch["extra_fields"]
-        
-        # --- STAGE 2: Fixer (π_fix) Episode ---
-        fixer_prompts = []
-        for i in range(len(batch)):
-            fix_prompt_text = batch.non_tensor_batch["fix_prompt"][i]
-            
-            # The fixer's input is the broken layout from the generator
-            fixer_multi_modal_data = {
-                "image": [final_gen_states[i]["image"]],
-                "clean_gds_path": final_gen_states[i]["gds_path"], # Pass path to modified GDS
-            }
-            
-            fixer_prompts.append({
-                "raw_prompt": [{"role": "user", "content": fix_prompt_text}],
-                "multi_modal_data": fixer_multi_modal_data,
-                "uid": batch.non_tensor_batch["uid"][i] + "_fix", # Distinguish from gen UID
-                "extra_info": {}
-            })
-        
-        # Create a new DataProto for the fixer agent
-        fixer_batch = DataProto.from_list_of_dicts(fixer_prompts) # Assuming a helper like this exists
+        gen_metrics = gen_batch_output.non_tensor_batch.get("metrics", [])
 
+        # --- STAGE 2: Fixer Episode Preparation ---
+        # 这一步我们必须手动构建 Fixer 的 Batch，因为它不是从 DataLoader 读出来的
+        
+        save_dir = "/tmp/drc_generated_layouts"
+        
+        # 准备列表以供后续堆叠
+        fixer_input_ids = []
+        fixer_attention_masks = []
+        fixer_uids = []
+        fixer_position_ids = [] # <--- [FIX 1] 新增列表
+        fixer_mm_data = []
+        fixer_raw_prompts = []
+        fixer_extra_info = []
+
+        # 使用 trainer 自带的 tokenizer
+        tokenizer = self.tokenizer
+
+        for i in range(len(batch)):
+            uid = batch.non_tensor_batch["uid"][i]
+            generated_gds_path = os.path.join(save_dir, f"{uid}.gds")
+            
+            # 1. 构造 Prompt
+            prompt_text = "The previous layout has errors. Please fix them."
+            msgs = [{"role": "user", "content": prompt_text}]
+            
+            # 2. Tokenize
+            prompt_str = tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+            enc = tokenizer(prompt_str, return_tensors='pt')
+            
+            input_id = enc.input_ids[0]
+            attn_mask = enc.attention_mask[0]
+            
+            # [FIX 2] 生成 Position IDs (简单的 0, 1, 2... 序列)
+            seq_len = input_id.shape[0]
+            pos_id = torch.arange(seq_len, dtype=torch.long)
+            
+            fixer_input_ids.append(input_id)
+            fixer_attention_masks.append(attn_mask)
+            fixer_position_ids.append(pos_id) # <--- 添加
+            
+            # 3. 构造 Non-Tensor 数据
+            dummy_img = Image.new('RGB', (100, 100), color='black')
+            
+            fixer_mm_data.append({
+                "clean_gds_path": generated_gds_path,
+                "image": [dummy_img] 
+            })
+            fixer_uids.append(f"{uid}_fix")
+            fixer_raw_prompts.append(msgs)
+            fixer_extra_info.append({})
+
+        # 4. Collate (堆叠成 Batch)
+        # Pad input_ids and attention_mask
+        input_ids_batch = pad_sequence(fixer_input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        attention_mask_batch = pad_sequence(fixer_attention_masks, batch_first=True, padding_value=0)
+        position_ids_batch = pad_sequence(fixer_position_ids, batch_first=True, padding_value=0) # <--- [FIX 3] Pad Position IDs
+        
+        # 5. 手动创建 DataProto
+        # 注意：batch_size 必须匹配
+        batch_size = len(batch)
+        
+        fixer_batch = DataProto(
+            batch=TensorDict({
+                "prompts": input_ids_batch,
+                "input_ids": input_ids_batch,
+                "attention_mask": attention_mask_batch,
+                "position_ids": position_ids_batch, # <--- [FIX 4] 放入 TensorDict，解决 KeyError
+            }, batch_size=[batch_size]),
+            non_tensor_batch={
+                "uid": np.array(fixer_uids),
+                "multi_modal_data": np.array(fixer_mm_data, dtype=object),
+                "raw_prompt": np.array(fixer_raw_prompts, dtype=object),
+                "extra_info": np.array(fixer_extra_info, dtype=object)
+            }
+        )
+
+        # --- STAGE 3: Fixer Execution ---
         with marked_timer("fix_episode_rollout", timing_raw, color="blue"):
             fix_batch_output = self.actor_rollout_wg.generate_sequences(fixer_batch)
+            
+        fix_metrics = fix_batch_output.non_tensor_batch.get("metrics", [])
 
-        # --- STAGE 3: Reward Calculation & Batch Combination ---
-        # The reward manager needs info from BOTH episodes. We'll pass it via meta_info.
-        gen_final_errors = gen_batch_output.non_tensor_batch["extra_fields"]['drc_errors_after']
-        fix_initial_errors = fix_batch_output.non_tensor_batch["extra_fields"]['drc_errors_before']
-        fix_final_errors = fix_batch_output.non_tensor_batch["extra_fields"]['drc_errors_after']
-        fix_ops_counts = fix_batch_output.non_tensor_batch["extra_fields"]['num_fix_ops']
-        
-        # Attach this crucial info to the respective DataProto objects before concatenation
-        gen_batch_output.non_tensor_batch["n_before"] = gen_final_errors
-        gen_batch_output.non_tensor_batch["n_fix_ops"] = fix_ops_counts
-        
-        fix_batch_output.non_tensor_batch["n_before"] = fix_initial_errors
-        fix_batch_output.non_tensor_batch["n_after"] = fix_final_errors
-        fix_batch_output.non_tensor_batch["n_fix_ops"] = fix_ops_counts
-        
-        # Combine the two trajectories into a single large batch
-        # The batch will be interleaved: [gen_0, fix_0, gen_1, fix_1, ...]
+        # --- STAGE 4: Combine & Reward ---
+        gen_batch_output.non_tensor_batch["drc_metrics"] = gen_metrics
+        fix_batch_output.non_tensor_batch["drc_metrics"] = fix_metrics
+
         combined_batch = DataProto.concat([gen_batch_output, fix_batch_output])
-        # Sort to interleave if concat doesn't do it automatically
-        # ... logic to sort combined_batch ...
         
-        # Now, compute rewards on the combined batch. The DRCRewardManager will know
-        # how to parse this interleaved structure.
         with marked_timer("reward", timing_raw, color="yellow"):
-            # self.reward_fn is an instance of DRCRewardManager
             reward_result = self.reward_fn(combined_batch, return_dict=True)
             combined_batch.batch["token_level_rewards"] = reward_result["reward_tensor"]
-            # Any extra info from reward manager can be handled here
 
-        # ... The rest of the logic from the original `fit` loop continues from here ...
-        # (e.g., log_prob calculation, advantage estimation, policy update)
-        # But they will operate on the `combined_batch`.
-
-        # This is a conceptual return, you'd integrate this logic into `fit`
         return combined_batch, timing_raw
-
     def fit(self):
         """
         The training loop of PPO.
