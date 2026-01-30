@@ -1,0 +1,2 @@
+- name: drc_agent
+  _target_: recipe.drc.drc_agent.DRCAgentLoop

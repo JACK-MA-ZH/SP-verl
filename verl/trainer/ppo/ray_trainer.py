@@ -26,6 +26,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from pprint import pprint
 from typing import Optional
+import gdsfactory as gf
+from verl.utils.drc.drc_tool import component_to_pil_image
 
 import numpy as np
 import ray
@@ -970,7 +972,7 @@ class RayPPOTrainer:
         # --- STAGE 2: Fixer Episode Preparation ---
         # 这一步我们必须手动构建 Fixer 的 Batch，因为它不是从 DataLoader 读出来的
         
-        save_dir = "/tmp/drc_generated_layouts"
+        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
         
         # 准备列表以供后续堆叠
         fixer_input_ids = []
@@ -978,6 +980,7 @@ class RayPPOTrainer:
         fixer_uids = []
         fixer_position_ids = [] # <--- [FIX 1] 新增列表
         fixer_mm_data = []
+        fixer_interaction_kwargs = [] # [NEW] 专门存放 clean_gds_path
         fixer_raw_prompts = []
         fixer_extra_info = []
 
@@ -987,7 +990,9 @@ class RayPPOTrainer:
         for i in range(len(batch)):
             uid = batch.non_tensor_batch["uid"][i]
             generated_gds_path = os.path.join(save_dir, f"{uid}.gds")
-            
+            component = gf.import_gds(generated_gds_path)
+                # 使用你的 drc_tool.py 中的函数进行渲染
+            real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
             # 1. 构造 Prompt
             prompt_text = "The previous layout has errors. Please fix them."
             msgs = [{"role": "user", "content": prompt_text}]
@@ -1011,8 +1016,10 @@ class RayPPOTrainer:
             dummy_img = Image.new('RGB', (100, 100), color='black')
             
             fixer_mm_data.append({
-                "clean_gds_path": generated_gds_path,
-                "image": [dummy_img] 
+                "image": [real_img] 
+            })
+            fixer_interaction_kwargs.append({
+                "clean_gds_path": generated_gds_path
             })
             fixer_uids.append(f"{uid}_fix")
             fixer_raw_prompts.append(msgs)
@@ -1038,6 +1045,7 @@ class RayPPOTrainer:
             non_tensor_batch={
                 "uid": np.array(fixer_uids),
                 "multi_modal_data": np.array(fixer_mm_data, dtype=object),
+                "interaction_kwargs": np.array(fixer_interaction_kwargs, dtype=object), # <--- 传入这里
                 "raw_prompt": np.array(fixer_raw_prompts, dtype=object),
                 "extra_info": np.array(fixer_extra_info, dtype=object)
             }

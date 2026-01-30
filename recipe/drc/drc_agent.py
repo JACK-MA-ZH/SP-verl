@@ -13,7 +13,7 @@ from verl.utils.profiler import simple_timer
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
-print("!!!!!!!!!! DRC AGENT LOOP MODULE LOADED !!!!!!!!!!")
+
 class DRCAgentData:
     """Encapsulates all state variables for the DRC agent loop."""
     def __init__(self, messages, image_data, metrics, request_id, tools_kwargs, interaction, interaction_kwargs):
@@ -35,7 +35,7 @@ class DRCAgentData:
         self.fix_ops_count = 0
 
 
-@register("drc_agent")
+
 class DRCAgentLoop(ToolAgentLoop):
     """
     An agent loop specialized for DRC tasks. It orchestrates the multi-turn
@@ -181,4 +181,3 @@ if __name__ == "__main__":
     # This requires a more complex setup to test, involving mock tools and interactions.
     # A unit test here would be non-trivial.
     print("DRCAgentLoop defined. Requires integration test to validate.")
-

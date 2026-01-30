@@ -24,7 +24,8 @@ from .protocol import DataProto
 from .utils.device import is_npu_available
 from .utils.import_utils import import_external_libs
 from .utils.logging_utils import set_basic_config
-
+import verl.experimental.agent_loop.drc_agent_loop
+print(">>> [verl/__init__.py] Successfully imported drc_agent_loop")
 version_folder = os.path.dirname(os.path.join(os.path.abspath(__file__)))
 
 with open(os.path.join(version_folder, "version/version")) as f:

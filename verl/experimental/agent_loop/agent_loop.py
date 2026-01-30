@@ -330,6 +330,7 @@ class AgentLoopWorkerBase:
             response_mask: | 1, 1, 1, ..., 1, 1 | 0, 0, .., 0, 0 | 1, 1, 1, ..., 1, 1 | 0, 0, ..., 0|
         """
         config = self.config.actor_rollout_ref.rollout
+        print("agent loop going")
         sampling_params = dict(
             temperature=config.temperature,
             top_p=config.top_p,

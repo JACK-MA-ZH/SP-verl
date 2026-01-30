@@ -49,8 +49,8 @@ actor_rollout_ref:
     optim:
       lr: 3e-6
     # 关键参数：防止 Assertion Error
-    ppo_mini_batch_size: 64            # 每次 PPO 更新的数据块大小
-    ppo_micro_batch_size_per_gpu: 4     # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
+    ppo_mini_batch_size: 1            # 每次 PPO 更新的数据块大小
+    ppo_micro_batch_size_per_gpu: 1     # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
     use_kl_loss: True
     kl_loss_coef: 0.01
     kl_loss_type: low_var_kl
@@ -68,13 +68,14 @@ actor_rollout_ref:
     name: vllm
     gpu_memory_utilization: 0.5  # 留一半显存给 Training Actor
     tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
-    
+    mode: async
     # [关键] GRPO 需要多次采样来计算 Baseline
     n: 5  # 每个 Prompt 生成 5 条回复
     
     # 推理时的 Batch Size
-    log_prob_micro_batch_size_per_gpu: 16
+    log_prob_micro_batch_size_per_gpu: 1
     agent:
+      agent_loop_config_path: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/recipe/drc/config/agent.yaml
       default_agent_loop: drc_agent
     
     # 启用 Multi-turn Tool Support
@@ -87,7 +88,7 @@ actor_rollout_ref:
 
   # --- Ref Model 配置 (通常 Offload 到 CPU 省显存) ---
   ref:
-    log_prob_micro_batch_size_per_gpu: 16
+    log_prob_micro_batch_size_per_gpu: 1
     fsdp_config:
       param_offload: True  # 将 Ref 模型参数卸载到 CPU
 
