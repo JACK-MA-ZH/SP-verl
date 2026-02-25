@@ -109,6 +109,7 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
         # 4. 构造 Prompt
         # 这是 Generator Agent 看到的任务描述
         prompt = (
+            "<image>\n"  # <--- 注意这里增加了 <image>
             "You have a clean layout with a square named 'square_1'. "
             "Your task is to create a DRC spacing violation. "
             "Use 'op_move_polygon' to move 'square_1' to a position where it might overlap or be too close to another shape if one existed, "
@@ -120,7 +121,15 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
             "uid": sample_name,
             "data_source": "simple_square_drc",
             "split": split,
-            "generation_prompt": prompt,
+            "prompt": [{
+                "role": "user",
+                "content": prompt
+            }],
+            # "raw_prompt": [{
+            #     "role": "user",
+            #     "content": prompt
+            # }],
+            "images": [{"image": abs_png_path}],
             "clean_layout_gds_path": abs_gds_path,
             "clean_layout_png_path": abs_png_path,
             "target_drc_rule": "min_spacing", 

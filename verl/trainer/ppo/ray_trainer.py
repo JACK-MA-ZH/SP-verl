@@ -994,7 +994,7 @@ class RayPPOTrainer:
                 # 使用你的 drc_tool.py 中的函数进行渲染
             real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
             # 1. 构造 Prompt
-            prompt_text = "The previous layout has errors. Please fix them."
+            prompt_text = "<image>\nThe previous layout has errors. Please fix them."
             msgs = [{"role": "user", "content": prompt_text}]
             
             # 2. Tokenize
@@ -1019,7 +1019,7 @@ class RayPPOTrainer:
                 "image": [real_img] 
             })
             fixer_interaction_kwargs.append({
-                "clean_gds_path": generated_gds_path
+                "clean_layout_gds_path": generated_gds_path
             })
             fixer_uids.append(f"{uid}_fix")
             fixer_raw_prompts.append(msgs)

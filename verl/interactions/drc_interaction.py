@@ -101,9 +101,9 @@ class DRCInteraction(BaseInteraction):
         if instance_id is None:
             instance_id = str(uuid4())
 
-        clean_gds_path = kwargs.get("clean_gds_path")
+        clean_gds_path = kwargs.get("clean_layout_gds_path")
         if not clean_gds_path:
-            raise ValueError("DRCInteraction requires 'clean_gds_path'.")
+            raise ValueError("DRCInteraction requires 'clean_layout_gds_path'.")
 
         # Load GDS
         local_gds_path = copy_to_local(clean_gds_path)

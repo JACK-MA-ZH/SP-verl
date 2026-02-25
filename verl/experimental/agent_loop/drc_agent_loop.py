@@ -44,7 +44,7 @@ class DRCAgentLoop(ToolAgentLoop):
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         
         logger.info(f"[DRCAgentLoop] begin drc loop")
-        raise TypeError("drc going")
+        #raise TypeError("drc going")
         # Initial prompt for the generator
         # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
         # kwargs 是从 DataProto.non_tensor_batch 中解包出来的单个样本数据

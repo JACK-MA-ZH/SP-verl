@@ -6,7 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from verl.experimental.agent_loop.agent_loop import AgentLoopOutput, register
-from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
+from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop,AgentData
 from verl.interactions.drc_interaction import DRCInteraction
 from verl.tools.schemas import ToolResponse
 from verl.utils.profiler import simple_timer
@@ -14,7 +14,7 @@ from verl.utils.profiler import simple_timer
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
-class DRCAgentData:
+class DRCAgentData(AgentData):
     """Encapsulates all state variables for the DRC agent loop."""
     def __init__(self, messages, image_data, metrics, request_id, tools_kwargs, interaction, interaction_kwargs):
         self.messages = messages
@@ -33,6 +33,7 @@ class DRCAgentData:
         self.drc_errors_at_start = 0
         self.drc_errors_at_end = 0
         self.fix_ops_count = 0
+        #self.assistant_turns = 0
 
 
 
@@ -44,7 +45,7 @@ class DRCAgentLoop(ToolAgentLoop):
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         
         logger.info(f"[DRCAgentLoop] begin drc loop")
-        raise TypeError("drc going")
+        #raise TypeError("drc going")
         # Initial prompt for the generator
         # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
         # kwargs 是从 DataProto.non_tensor_batch 中解包出来的单个样本数据
@@ -59,7 +60,7 @@ class DRCAgentLoop(ToolAgentLoop):
         request_id = uuid4().hex
         tools_kwargs = kwargs.get("tools_kwargs", {})
         interaction_kwargs = kwargs.get("interaction_kwargs", {})
-        
+        interaction_kwargs["clean_layout_gds_path"] = kwargs["clean_layout_gds_path"]
         # Initialize the DRC interaction environment
         interaction: DRCInteraction = self.interaction_map["drc_interaction"]
         await interaction.start_interaction(request_id, **multi_modal_data, **interaction_kwargs)
@@ -76,13 +77,36 @@ class DRCAgentLoop(ToolAgentLoop):
         agent_data.drc_errors_at_start = interaction._instance_dict[request_id]["drc_errors"]
         
         state = AgentState.PENDING
+        turn_count = 1
         while state != AgentState.TERMINATED:
             if state == AgentState.PENDING:
                 state = await self._handle_pending_state(agent_data, sampling_params)
             elif state == AgentState.GENERATING:
+                # ==========================================
+                # 1. 打印 LLM 的输入 (当前所有的历史消息)
+                # ==========================================
+                print(f"\n\n{'='*20} [TURN {turn_count}] LLM INPUT {'='*20}")
+                # 为了美观，可以只打印最后两三条，或者完整打印
+                for msg in agent_data.messages:
+                    # 如果 content 是列表(包含图片字典)，截断打印避免刷屏
+                    content_str = str(msg['content'])
+                    if len(content_str) > 500:
+                        content_str = content_str[:500] + " ... [TRUNCATED]"
+                    print(f"[{msg['role'].upper()}]: {content_str}")
+                print(f"{'='*60}\n")
+                
                 state = await self._handle_generating_state(agent_data, sampling_params, ignore_termination=True)
+                
+                # ==========================================
+                # 2. 打印 LLM 的输出 (最新追加的 assistant 消息)
+                # ==========================================
+                print(f"\n{'='*20} [TURN {turn_count}] LLM OUTPUT {'='*20}")
+                last_msg = agent_data.messages[-1]
+                print(f"[{last_msg['role'].upper()}]: {last_msg['content']}")
+                print(f"{'='*60}\n")
             elif state == AgentState.PROCESSING_TOOLS:
                 state = await self._handle_drc_tool_processing(agent_data)
+                turn_count = turn_count+1
             else:
                 logger.error(f"Invalid state: {state}")
                 state = AgentState.TERMINATED
@@ -154,7 +178,7 @@ class DRCAgentLoop(ToolAgentLoop):
         # We pass the image and text feedback.
         # NOTE: This deviates from the standard `ToolAgentLoop` by adding a new image.
         
-        new_messages = [{"role": "tool", "content": drc_message}]
+        new_messages = [{"role": "tool", "content": f"<image>\n{drc_message}"}]
         agent_data.messages.extend(new_messages)
         agent_data.image_data.append(new_image) # Add new image to the history
         
