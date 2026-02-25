@@ -17,6 +17,7 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 class DRCAgentData(AgentData):
     """Encapsulates all state variables for the DRC agent loop."""
     def __init__(self, messages, image_data, metrics, request_id, tools_kwargs, interaction, interaction_kwargs):
+        super().__init__(messages, image_data, metrics, request_id, tools_kwargs, interaction, interaction_kwargs)
         self.messages = messages
         self.image_data = image_data # This will be a list of images over turns
         self.metrics = metrics
