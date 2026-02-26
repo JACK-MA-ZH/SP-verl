@@ -133,6 +133,11 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
             "clean_layout_gds_path": abs_gds_path,
             "clean_layout_png_path": abs_png_path,
             "target_drc_rule": "min_spacing", 
+            "extra_info": {
+    "interaction_kwargs": {
+        "clean_layout_gds_path": abs_gds_path
+    }
+}
             # 可以在这里添加额外的字段供 Reward Function 使用
         }
         data_records.append(record)

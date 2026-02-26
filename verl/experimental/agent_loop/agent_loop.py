@@ -499,7 +499,8 @@ class AgentLoopWorkerBase:
                 position_ids = compute_position_id_with_mask(attention_mask)  # (1, seq_len)
             enable_async_reward = (
                 self.reward_router_address is not None and self.config.reward_model.enable_resource_pool
-            ) or not self.config.reward_model.enable
+            ) #or not self.config.reward_model.enable #NOTE: FIXING REDUNDANT REWARD
+            #print("enable_async_reward",enable_async_reward,self.reward_router_address,self.config.reward_model.enable_resource_pool,self.config.reward_model.enable)
             if output.reward_score is None and enable_async_reward:
                 batch = TensorDict(
                     {
@@ -579,7 +580,8 @@ class AgentLoopWorkerBase:
         non_tensor_batch = {
             "__num_turns__": np.array([input.num_turns for input in inputs], dtype=np.int32),
         }
-
+                
+                
         # add reward_extra_info to non_tensor_batch
         reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for input in inputs]
         reward_extra_keys = list(reward_extra_infos[0].keys())

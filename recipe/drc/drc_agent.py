@@ -13,7 +13,18 @@ from verl.utils.profiler import simple_timer
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+try:
+    from verl.experimental.reward.reward_loop.registry import register as register_exp_rm
+    
+    @register_exp_rm("drc")
+    class DummyExperimentalDRCReward:
+        def __init__(self, config, *args, **kwargs):
+            self.config = config
 
+        def __call__(self, data, *args, **kwargs):
+            return {"reward_score": 0.0, "reward_extra_info": {}}
+except ImportError:
+    pass
 class DRCAgentData(AgentData):
     """Encapsulates all state variables for the DRC agent loop."""
     def __init__(self, messages, image_data, metrics, request_id, tools_kwargs, interaction, interaction_kwargs):
@@ -61,7 +72,11 @@ class DRCAgentLoop(ToolAgentLoop):
         request_id = uuid4().hex
         tools_kwargs = kwargs.get("tools_kwargs", {})
         interaction_kwargs = kwargs.get("interaction_kwargs", {})
-        interaction_kwargs["clean_layout_gds_path"] = kwargs["clean_layout_gds_path"]
+        
+        #interaction_kwargs["clean_layout_gds_path"] = kwargs["clean_layout_gds_path"]
+        
+        # extra_info = kwargs.get("extra_info", {})
+        # interaction_kwargs["clean_layout_gds_path"] = extra_info.get("clean_layout_gds_path")
         # Initialize the DRC interaction environment
         interaction: DRCInteraction = self.interaction_map["drc_interaction"]
         await interaction.start_interaction(request_id, **multi_modal_data, **interaction_kwargs)
@@ -108,6 +123,9 @@ class DRCAgentLoop(ToolAgentLoop):
             elif state == AgentState.PROCESSING_TOOLS:
                 state = await self._handle_drc_tool_processing(agent_data)
                 turn_count = turn_count+1
+            elif state == AgentState.INTERACTING:
+                logger.info(f"[DRCAgentLoop] Model output text without tool call, terminating episode.")
+                state = AgentState.TERMINATED
             else:
                 logger.error(f"Invalid state: {state}")
                 state = AgentState.TERMINATED
@@ -138,15 +156,15 @@ class DRCAgentLoop(ToolAgentLoop):
         response_ids = agent_data.prompt_ids[-len(agent_data.response_mask) :]
         prompt_ids = agent_data.prompt_ids[: len(agent_data.prompt_ids) - len(agent_data.response_mask)]
 
-        metrics_to_return = {
+        drc_info = {
+            "uid": uid,
             "drc_errors_before": agent_data.drc_errors_at_start,
             "drc_errors_after": agent_data.drc_errors_at_end,
             "num_fix_ops": agent_data.fix_ops_count,
-            # 我们甚至可以把路径放在这里，但 metrics 通常存数值，存字符串可能有风险
-            # 不过我们已经有了确定性的路径策略 (UID)，所以这里不需要存路径
         }
+        metrics_to_return={}
+        drc_info.update(agent_data.metrics)
         metrics_to_return.update(agent_data.metrics)
-        
         output = AgentLoopOutput(
             prompt_ids=prompt_ids,
             response_ids=response_ids[:self.response_length],
@@ -155,6 +173,7 @@ class DRCAgentLoop(ToolAgentLoop):
             response_logprobs=agent_data.response_logprobs[:self.response_length] if agent_data.response_logprobs else None,
             num_turns=len(agent_data.messages),
             metrics=metrics_to_return,
+            extra_fields=drc_info
             
         )
         return output

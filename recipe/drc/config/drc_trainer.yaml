@@ -8,8 +8,8 @@ trainer:
   total_epochs: 15
   n_gpus_per_node: 1
   nnodes: 1
-  save_freq: 5
-  test_freq: 5
+  save_freq: 0
+  test_freq: 0
   logger: ["console"]
 
 # 1. 数据配置
@@ -20,7 +20,7 @@ data:
   #prompt_key: generation_prompt
   max_prompt_length: 4096
   max_response_length: 4096
-  train_batch_size: 4  # 全局 Batch Size (PPO update step size)
+  train_batch_size: 8  # 全局 Batch Size (PPO update step size)
   filter_overlong_prompts: True
   truncation: error
   dataloader_num_workers: 0
@@ -104,3 +104,7 @@ reward_model:
   reward_manager: drc
   reward_manager_config:
     num_examine: 1
+# custom_reward_function:
+#   path: "recipe/collabllm/reward_function.py"
+#   custom_reward_function:
+#     name: "conversation_level_reward_func"

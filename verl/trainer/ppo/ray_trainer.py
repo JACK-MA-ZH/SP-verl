@@ -964,8 +964,13 @@ class RayPPOTrainer:
         timing_raw = {}
         
         # --- STAGE 1: Generator Episode ---
-        with marked_timer("gen_episode_rollout", timing_raw, color="red"):
-            gen_batch_output = self.actor_rollout_wg.generate_sequences(batch)
+        with marked_timer("step", timing_raw, color="red"):
+            if not self.async_rollout_mode:
+                gen_batch_output = self.actor_rollout_wg.generate_sequences(batch)
+            else:
+                gen_batch_output = self.async_rollout_manager.generate_sequences(batch)
+                
+            
         
         gen_metrics = gen_batch_output.non_tensor_batch.get("metrics", [])
 
@@ -994,12 +999,21 @@ class RayPPOTrainer:
                 # 使用你的 drc_tool.py 中的函数进行渲染
             real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
             # 1. 构造 Prompt
-            prompt_text = "<image>\nThe previous layout has errors. Please fix them."
-            msgs = [{"role": "user", "content": prompt_text}]
+            prompt_text = "The previous layout has errors. Please fix them."
+            msgs = [{
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": prompt_text}
+                ]
+            }]
             
             # 2. Tokenize
-            prompt_str = tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-            enc = tokenizer(prompt_str, return_tensors='pt')
+            prompt_str = self.processor.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+            # 传入 text 和 images，算出真实的、包含图片长度的 enc
+            enc = self.processor(text=[prompt_str], images=[real_img], return_tensors='pt')
+            
+            
             
             input_id = enc.input_ids[0]
             attn_mask = enc.attention_mask[0]
@@ -1053,18 +1067,41 @@ class RayPPOTrainer:
 
         # --- STAGE 3: Fixer Execution ---
         with marked_timer("fix_episode_rollout", timing_raw, color="blue"):
-            fix_batch_output = self.actor_rollout_wg.generate_sequences(fixer_batch)
+            if not self.async_rollout_mode:
+                fix_batch_output = self.actor_rollout_wg.generate_sequences(fixer_batch)
+            else:
+                fix_batch_output = self.async_rollout_manager.generate_sequences(fixer_batch)
+            
             
         fix_metrics = fix_batch_output.non_tensor_batch.get("metrics", [])
 
         # --- STAGE 4: Combine & Reward ---
-        gen_batch_output.non_tensor_batch["drc_metrics"] = gen_metrics
-        fix_batch_output.non_tensor_batch["drc_metrics"] = fix_metrics
-
-        combined_batch = DataProto.concat([gen_batch_output, fix_batch_output])
+        # gen_batch_output.non_tensor_batch["drc_metrics"] = gen_metrics
+        # fix_batch_output.non_tensor_batch["drc_metrics"] = fix_metrics
         
+        keys_to_remove = ["timing", "metrics", "reward_extra_keys"]
+        for k in keys_to_remove:
+            gen_batch_output.meta_info.pop(k, None)
+            fix_batch_output.meta_info.pop(k, None)
+            
+        combined_batch = DataProto.concat([gen_batch_output, fix_batch_output])
+        with marked_timer("ref_log_prob", timing_raw, color="cyan"):
+            ref_output = self.ref_policy_wg.compute_ref_log_prob(combined_batch)
+            
+            # [关键修复] 检查返回类型并提取内部的 tensor
+            if isinstance(ref_output, DataProto):
+                # 假设返回的 DataProto 内部 batch 里存的 key 是 'ref_log_prob' 
+                # 或者直接从其 batch 中提取
+                ref_tensor = ref_output.batch['ref_log_prob']
+            else:
+                ref_tensor = ref_output
+            
+            # 确保塞进 TensorDict 的是一个 Tensor 而不是 DataProto
+            combined_batch.batch["ref_log_prob"] = ref_tensor
+            
         with marked_timer("reward", timing_raw, color="yellow"):
             reward_result = self.reward_fn(combined_batch, return_dict=True)
+            combined_batch.batch["token_level_scores"] = reward_result["reward_tensor"]
             combined_batch.batch["token_level_rewards"] = reward_result["reward_tensor"]
 
         return combined_batch, timing_raw
