@@ -130,6 +130,7 @@ class DRCInteraction(BaseInteraction):
         state = self._instance_dict[instance_id]
         component = state["component"]
 
+
         try:
             payload = json.loads(tool_payload_json)
             tool_name = payload.get("tool")
@@ -147,7 +148,7 @@ class DRCInteraction(BaseInteraction):
                 state["fix_ops_count"] += 1
 
         except Exception as e:
-            logger.error(f"Error executing {tool_name}: {e}")
+            logger.error(f"Error executing tool: {e}")#{tool_name}
             action_feedback = f"Tool execution failed: {e}"
 
         # Post-action: Check & Render

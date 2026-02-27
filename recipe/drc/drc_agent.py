@@ -163,7 +163,7 @@ class DRCAgentLoop(ToolAgentLoop):
             "num_fix_ops": agent_data.fix_ops_count,
         }
         metrics_to_return={}
-        drc_info.update(agent_data.metrics)
+        
         metrics_to_return.update(agent_data.metrics)
         output = AgentLoopOutput(
             prompt_ids=prompt_ids,
@@ -198,7 +198,15 @@ class DRCAgentLoop(ToolAgentLoop):
         # We pass the image and text feedback.
         # NOTE: This deviates from the standard `ToolAgentLoop` by adding a new image.
         
-        new_messages = [{"role": "tool", "content": f"<image>\n{drc_message}"}]
+        new_messages = [
+            {
+                "role": "tool", 
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": drc_message}
+                ]
+            }
+        ]
         agent_data.messages.extend(new_messages)
         agent_data.image_data.append(new_image) # Add new image to the history
         
