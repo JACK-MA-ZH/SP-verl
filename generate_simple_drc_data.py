@@ -112,8 +112,7 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
             "<image>\n"  # <--- 注意这里增加了 <image>
             "You have a clean layout with a square named 'square_1'. "
             "Your task is to create a DRC spacing violation. "
-            "Use 'op_move_polygon' to move 'square_1' to a position where it might overlap or be too close to another shape if one existed, "
-            "or simply demonstrate a move operation."
+            "Use 'op_split_polygon' to split 'square_1' or existing  instance to create spacing errors "
         )
         
         # 5. 记录元数据 (对应 DRCDataset 的字段)

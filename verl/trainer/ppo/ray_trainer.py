@@ -999,7 +999,7 @@ class RayPPOTrainer:
                 # 使用你的 drc_tool.py 中的函数进行渲染
             real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
             # 1. 构造 Prompt
-            prompt_text = "The previous layout has errors. Please fix them."
+            prompt_text = "The previous layout has errors. Please use op_move to fix them."
             msgs = [{
                 "role": "user",
                 "content": [

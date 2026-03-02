@@ -91,25 +91,32 @@ class SplitPolygonTool(BaseTool):
             "type": "function",
             "function": {
                 "name": "op_split_polygon",
-                "description": "Splits a polygon into pieces using a rectangular bounding box mask.",
+                "description": "use an infinite straight line (x=value or y=value) to split a polygon.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "polygon_name": {"type": "string", "description": "Name of the polygon/instance to split."},
-                        "split_line_bbox": {
-                            "type": "array",
-                            "items": {"type": "number"},
-                            "minItems": 4, "maxItems": 4,
-                            "description": "BBox of the split mask [xmin, ymin, xmax, ymax]."
+                        "split_line": {
+                            "type": "object",
+                            "properties": {
+                                "axis": {
+                                    "type": "string",
+                                    "enum": ["x", "y"],
+                                    "description": "decide the line is x=value or y=value?",
+                                },
+                                "value": {"type": "number", "description": "line's value"},
+                            },
+                            "required": ["axis", "value"],
+                            "description": "define the axis and line'svalue",
                         },
-                        "layer": {
-                            "type": "array",
-                            "items": {"type": "number"},
-                            "minItems": 2, "maxItems": 2,
-                            "description": "GDS Layer [layer, purpose], e.g., [1, 0]."
-                        },
+                        # "layer": {
+                        #     "type": "array",
+                        #     "items": {"type": "number"},
+                        #     "minItems": 2, "maxItems": 2,
+                        #     "description": "GDS Layer [layer, purpose], e.g., [1, 0]."
+                        # },
                     },
-                    "required": ["polygon_name", "split_line_bbox", "layer"],
+                    "required": ["polygon_name", "split_line"],
                 },
             }
         })

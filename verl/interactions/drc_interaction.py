@@ -5,8 +5,9 @@ import os
 import json
 import asyncio
 import tempfile
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List,Iterable
 from uuid import uuid4
+import traceback
 
 import gdsfactory as gf
 from PIL import Image
@@ -20,8 +21,12 @@ from verl.utils.drc.drc_tool import (
     component_to_pil_image,  # <--- 必须使用这个函数来渲染
     _ensure_named_instance_map,
     _register_reference_name,
+    _iter_references,
+    _get_kdb_cell,
+    _build_reference_snapshot,
+    _format_netlist_payload
 )
-
+from gdsfactory.boolean import get_ref_shapes
 from verl.interactions.base import BaseInteraction
 from verl.utils.fs import copy_to_local
 
@@ -40,7 +45,14 @@ class DRCInteraction(BaseInteraction):
             "op_offset_polygon": OffsetPolygonTool(),
             "op_split_polygon": SplitPolygonTool(),
         }
-
+    def get_schematic(self, component) -> str:
+        if component is None:
+            return "{}"
+        netlist_payload = _format_netlist_payload(component)
+        if netlist_payload:
+            return netlist_payload
+        snapshot = _build_reference_snapshot(component)
+        return json.dumps(snapshot)
     def _ensure_reference_names(self, comp):
         """Replicates logic from your drc.py _ensure_reference_names"""
         if not hasattr(comp, "named_instances") or comp.named_instances is None:
@@ -57,26 +69,75 @@ class DRCInteraction(BaseInteraction):
             comp.named_instances[reference.name] = reference
 
     def _get_drc_violations(self, component) -> tuple[int, str]:
-        """Runs DRC checks strictly."""
-        # 安全检查：确保对象有 DRC 方法
-        if not (hasattr(component, "drc_spacing") and hasattr(component, "drc_width")):
-            # 如果没有 DRC 方法，可能是因为版本问题或空组件，返回默认值避免 crash
-            return 0, "Warning: Component missing DRC methods (Mock Pass)."
+        """Runs DRC checks strictly using klayout.db."""
+        import klayout.db as kdb
+
+        if component is None:
+            return 0, "No component loaded."
+
+        def _bbox_to_tuple(box, dbu: float) -> tuple[float, float, float, float]:
+            return (
+                float(box.left) * dbu,
+                float(box.bottom) * dbu,
+                float(box.right) * dbu,
+                float(box.top) * dbu,
+            )
+
+        # Target DRC rules from your second snippet
+        min_spacing = 0.1
+        min_width = 0.12
 
         try:
-            spacing_errors = component.drc_spacing(layer=(1, 0), spacing=0.1)
-            width_errors = component.drc_width(layer=(1, 0), min_width=0.12)
+            layout = component.kcl.layout
+            dbu = float(getattr(layout, "dbu", 1.0) or 1.0)
+            layer_index = int(layout.layer(1, 0))
+
+            if layer_index < 0:
+                return 0, "No DRC errors found."
+
+            region = kdb.Region()
+            
+            # 1. Fetch shapes from the main cell
+            kdb_cell = _get_kdb_cell(component)
+            if kdb_cell is not None:
+                region += kdb.Region(kdb_cell.shapes(layer_index))
+                
+            # 2. Fetch shapes from references
+            references = getattr(component, "named_instances", None)
+            if isinstance(references, dict) and references:
+                refs_iter = references.values()
+            else:
+                refs_iter = _iter_references(component)
+
+            if get_ref_shapes is None:
+                raise RuntimeError("get_ref_shapes helper unavailable; check drc_tool import")
+
+            for ref in refs_iter:
+                try:
+                    region += get_ref_shapes(ref, layer_index)
+                except Exception:
+                    continue
 
             errors = []
-            for poly in spacing_errors.get_polygons():
-                errors.append({"type": "min_spacing", "bbox": poly.bounds})
-            for poly in width_errors.get_polygons():
-                errors.append({"type": "min_width", "bbox": poly.bounds})
 
+            # 3. Perform spacing check
+            spacing_pairs = list(region.space_check(min_spacing / dbu).each())
+            for pair in spacing_pairs:
+                bbox = _bbox_to_tuple(pair.bbox(), dbu)
+                errors.append({"type": "min_spacing", "bbox": bbox})
+
+            # 4. Perform width check
+            width_pairs = list(region.width_check(min_width / dbu).each())
+            for pair in width_pairs:
+                bbox = _bbox_to_tuple(pair.bbox(), dbu)
+                errors.append({"type": "min_width", "bbox": bbox})
+
+            # 5. Format the output
             errors_text = (
                 "\n".join([f"ERROR: {e['type']} at {e['bbox']}" for e in errors])
                 if errors else "No DRC errors found."
             )
+            
             return len(errors), errors_text
 
         except Exception as exc:
@@ -148,6 +209,7 @@ class DRCInteraction(BaseInteraction):
                 state["fix_ops_count"] += 1
 
         except Exception as e:
+            traceback.print_exc()
             logger.error(f"Error executing tool: {e}")#{tool_name}
             action_feedback = f"Tool execution failed: {e}"
 
@@ -161,8 +223,8 @@ class DRCInteraction(BaseInteraction):
         state["image"] = new_image
         state["drc_errors"] = num_errors
         state["drc_message"] = drc_status
-        
-        full_feedback = f"Action Result: {action_feedback}\nCurrent DRC Status:\n{drc_status}"
+        component_schematic=self.get_schematic(component)
+        full_feedback = f"Current Schematic: {component_schematic}\nAction Result: {action_feedback}\nCurrent DRC Status:\n{drc_status}"
 
         return new_image, full_feedback, num_errors
 

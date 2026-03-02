@@ -100,7 +100,7 @@ class DRCRewardManager(AbstractRewardManager):
                 reward_tensor[i + 1, fix_valid_len - 1] = final_r_fix
 
             # Logging for debugging
-            if self.print_count < self.num_examine:
+            if 1:#self.print_count < self.num_examine:
                 print("-" * 20)
                 print(f"Episode Pair {i//2}:")
                 print(f"  N_before={n_before}, N_after={n_after}, N_fix_ops={n_fix_ops}")

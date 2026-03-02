@@ -20,7 +20,7 @@ data:
   #prompt_key: generation_prompt
   max_prompt_length: 4096
   max_response_length: 4096
-  train_batch_size: 8  # 全局 Batch Size (PPO update step size)
+  train_batch_size: 1  # 全局 Batch Size (PPO update step size)
   filter_overlong_prompts: True
   truncation: error
   dataloader_num_workers: 0
@@ -82,6 +82,7 @@ actor_rollout_ref:
     # 推理时的 Batch Size
     log_prob_micro_batch_size_per_gpu: 1
     agent:
+      num_workers: 1
       agent_loop_config_path: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/recipe/drc/config/agent.yaml
       default_agent_loop: drc_agent
     

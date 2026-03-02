@@ -106,8 +106,8 @@ class DRCAgentLoop(ToolAgentLoop):
                 for msg in agent_data.messages:
                     # 如果 content 是列表(包含图片字典)，截断打印避免刷屏
                     content_str = str(msg['content'])
-                    if len(content_str) > 500:
-                        content_str = content_str[:500] + " ... [TRUNCATED]"
+                    # if len(content_str) > 500:
+                    #     content_str = content_str[:500] + " ... [TRUNCATED]"
                     print(f"[{msg['role'].upper()}]: {content_str}")
                 print(f"{'='*60}\n")
                 

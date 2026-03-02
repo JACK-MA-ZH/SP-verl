@@ -24,7 +24,7 @@ from gdsfactory import get_layer
 from gdsfactory.boolean import get_ref_shapes
 from gdsfactory.typings import component
 import klayout.db as kdb
-
+import json
 try:  # pragma: no cover - optional dependency when running outside the agent stack
     from agent_r1.tool.base import BaseTool
 except ImportError:  # pragma: no cover - simple fallback for local testing
@@ -48,7 +48,14 @@ def _iter_references(comp: component) -> Iterable[gf.ComponentReference]:
     elif hasattr(comp, "references"):
         for ref in comp.references:
             yield ref
+def _get_kdb_cell(component: component) -> Any:
+    """Return the underlying :class:`klayout.db.Cell` for ``component``."""
 
+    if hasattr(component, "kdb_cell"):
+        return component.kdb_cell
+    if hasattr(component, "_kdb_cell"):
+        return component._kdb_cell
+    return getattr(component, "cell", None)
 
 def _ensure_named_instance_map(component: component) -> Dict[str, gf.ComponentReference]:
     if not hasattr(component, "named_instances") or component.named_instances is None:
@@ -262,7 +269,145 @@ def plot_with_labels_and_vertices(
         ax.autoscale()
     return fig, ax
 
+def _reference_bbox(reference: Any) -> Dict[str, float] | None:
+    """Return a JSON-serializable bbox description for ``reference``."""
 
+    bbox_candidate = None
+    bbox_method = getattr(reference, "bbox", None)
+    if callable(bbox_method):
+        try:
+            bbox_candidate = bbox_method()
+        except Exception:
+            bbox_candidate = None
+    elif bbox_method is not None:
+        bbox_candidate = bbox_method
+
+    if bbox_candidate is None:
+        return None
+    def _extract_value(obj: Any, *names: str) -> float | None:
+        for name in names:
+            value = getattr(obj, name, None)
+            if value is not None:
+                try:
+                    return float(value)
+                except Exception:
+                    continue
+        return None
+
+    xmin = _extract_value(bbox_candidate, "xmin", "left")/1000
+    xmax = _extract_value(bbox_candidate, "xmax", "right")/1000
+    ymin = _extract_value(bbox_candidate, "ymin", "bottom")/1000
+    ymax = _extract_value(bbox_candidate, "ymax", "top")/1000
+
+    coords = {k: v for k, v in {"xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax}.items() if v is not None}
+    return coords or None
+
+
+def _reference_center(reference: Any) -> Tuple[float, float] | None:
+    center = getattr(reference, "center", None)
+    if center is None:
+        bbox = _reference_bbox(reference)
+        if not bbox:
+            return None
+        try:
+            cx = (bbox["xmin"] + bbox["xmax"]) / 2.0
+            cy = (bbox["ymin"] + bbox["ymax"]) / 2.0
+            return (cx, cy)
+        except Exception:
+            return None
+
+    try:
+        return (float(center[0]), float(center[1]))
+    except Exception:
+        return None
+    
+def _build_reference_snapshot(component) -> Dict[str, Any]:
+    """Create a lightweight JSON-serializable schematic for ``component``."""
+
+    info = component.info if isinstance(getattr(component, "info", None), dict) else {}
+    labels = info.get("polygon_labels") if isinstance(info, dict) else None
+    if not isinstance(labels, list):
+        labels = []
+
+    label_lookup: Dict[str, Dict[str, Any]] = {}
+    for entry in labels:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if not name:
+            continue
+        label_lookup[str(name)] = {
+            "layer": entry.get("layer_index"),
+            "centroid": entry.get("centroid"),
+        }
+
+    named_instances = getattr(component, "named_instances", None)
+    if isinstance(named_instances, dict) and named_instances:
+        reference_iter: Iterable[Tuple[str | None, Any]] = named_instances.items()
+    else:
+        reference_iter = ((getattr(ref, "name", None), ref) for ref in _iter_references(component))
+
+    references: List[Dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    for raw_name, reference in reference_iter:
+        if reference is None:
+            continue
+        ref_id = id(reference)
+        if ref_id in seen_ids:
+            continue
+        seen_ids.add(ref_id)
+
+        name = raw_name or getattr(reference, "name", None)
+        if not name:
+            name = f"ref_{len(references)}"
+
+        bbox = _reference_bbox(reference)
+        center = _reference_center(reference)
+        references.append(
+            {
+                "name": str(name),
+                "bbox": bbox,
+                "center": center,
+                "label": label_lookup.get(str(name)),
+            }
+        )
+
+    snapshot = {
+        "component": getattr(component, "name", "component"),
+        "reference_count": len(references),
+        "references": references,
+    }
+
+    if info:
+        snapshot["info_keys"] = sorted(str(key) for key in info.keys())
+
+    return snapshot
+  
+def _format_netlist_payload(component) -> str | None:
+    """Serialize ``component.netlist`` output to a JSON string when available."""
+
+    try:
+        netlist_payload = component.get_netlist()
+    except AttributeError:
+        return None
+
+    if isinstance(netlist_payload, str):
+        netlist_payload = netlist_payload.strip()
+        return netlist_payload or None
+
+    if isinstance(netlist_payload, dict):
+        if not netlist_payload:
+            return None
+        return json.dumps(netlist_payload, ensure_ascii=False, indent=2, sort_keys=True)
+
+    if netlist_payload:
+        try:
+            return json.dumps(netlist_payload, ensure_ascii=False, default=str)
+        except TypeError:
+            return str(netlist_payload)
+
+    return None
+                          
 def component_to_pil_image(
     component_to_plot: component,
     *,
@@ -421,66 +566,194 @@ class SplitPolygonTool(DRCBaseTool):
     """Split a polygon into two pieces using a rectangular window."""
 
     name = "op_split_polygon"
-    description = "使用由边界框定义的切割矩形来分割一个“多边形”（实例）。原始“多边形”被替换为两个新的结果“多边形”。"
+    description = "使用一个无限长直线(x=value 或 y=value) 来分割一个多边形"
     parameters = {
         "type": "object",
         "properties": {
             "polygon_name": {"type": "string", "description": "要分割的‘多边形’（实例）的名称。"},
-            "split_line_bbox": {
-                "type": "array",
-                "items": {"type": "number"},
-                "minItems": 4,
-                "maxItems": 4,
-                "description": "切割矩形的边界框 [xmin, ymin, xmax, ymax] (um)。",
-            },
-            "layer": {
-                "type": "array",
-                "items": {"type": "number"},
-                "minItems": 2,
-                "maxItems": 2,
-                "description": "GDS Layer [layer, purpose] 列表 (例如 [1, 0])。",
+            "split_line": {
+                "type": "object",
+                "properties": {
+                    "axis": {
+                        "type": "string",
+                        "enum": ["x", "y"],
+                        "description": "决定分割直线是 x=value 还是 y=value?",
+                    },
+                    "value": {"type": "number", "description": "直线value"},
+                },
+                "required": ["axis", "value"],
+                "description": "???????",
             },
         },
-        "required": ["polygon_name", "split_line_bbox", "layer"],
+                
+            # "split_line_bbox": {
+            #     "type": "array",
+            #     "items": {"type": "number"},
+            #     "minItems": 4,
+            #     "maxItems": 4,
+            #     "description": "切割矩形的边界框 xmin, ymin, xmax, ymax (um)。",
+            # },
+            # "layer": {
+            #     "type": "array",
+            #     "items": {"type": "number"},
+            #     "minItems": 2,
+            #     "maxItems": 2,
+            #     "description": "GDS Layer [layer, purpose] 列表 (例如 [1, 0])。",
+            # },
+        #},
+        "required": ["polygon_name", "split_line"],
     }
+    def _build_half_plane_masks(
+        self,
+        reference: gf.ComponentReference,
+        axis: str,
+        value: float,
+        layer: tuple[int, int],
+    ) -> tuple[gf.Component, gf.Component]:
+        bbox = reference.bbox()
+        xmin = float(bbox.left)
+        xmax = float(bbox.right)
+        ymin = float(bbox.bottom)
+        ymax = float(bbox.top)
+        span_x = abs(xmax - xmin)
+        span_y = abs(ymax - ymin)
+        margin = max(span_x, span_y, 1.0) * 2.0
+
+        low = gf.Component()
+        high = gf.Component()
+
+        if axis == "x":
+            x_low = min(xmin - margin, value - margin)
+            x_high = max(xmax + margin, value + margin)
+            y_lo = ymin - margin
+            y_hi = ymax + margin
+            low.add_polygon(
+                [(x_low, y_lo), (value, y_lo), (value, y_hi), (x_low, y_hi)],
+                layer=layer,
+            )
+            high.add_polygon(
+                [(value, y_lo), (x_high, y_lo), (x_high, y_hi), (value, y_hi)],
+                layer=layer,
+                )
+        else:  # axis == "y"
+            y_low = min(ymin - margin, value - margin)
+            y_high = max(ymax + margin, value + margin)
+            x_lo = xmin - margin
+            x_hi = xmax + margin
+            low.add_polygon(
+                [(x_lo, y_low), (x_hi, y_low), (x_hi, value), (x_lo, value)],
+                layer=layer,
+            )
+            high.add_polygon(
+                [(x_lo, value), (x_hi, value), (x_hi, y_high), (x_lo, y_high)],
+                layer=layer,
+            )
+        return low, high
 
     def _execute(self, args: Dict[str, Any], component: component) -> Dict[str, Any] | None:
         polygon_name = args["polygon_name"]
-        xmin, ymin, xmax, ymax = map(float, args["split_line_bbox"])
-        layer_tuple = tuple(args["layer"])
-        if len(layer_tuple) != 2:
-            raise ValueError("Layer must be specified as [layer, purpose].")
+        split_line = args["split_line"]
+        axis = split_line.get("axis")
+        if axis not in {"x", "y"}:
+            raise ValueError("split_line.axis must be either 'x' or 'y'.")
+        try:
+            value = float(split_line["value"])
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError("split_line.value must be a valid number.") from exc
+
+        # layer_tuple = tuple(args["layer"])
+        # if len(layer_tuple) != 2:
+        #     raise ValueError("Layer must be specified as [layer, purpose].")
+        layer_tuple=tuple([1,0])
 
         reference = self._get_reference(component, polygon_name)
 
-        mask = gf.Component(name="split_mask")
-        mask.add_polygon(
-            [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)],
-            layer=layer_tuple,
-        )
+        layer_index = get_layer(layer_tuple)
+        region = get_ref_shapes(reference, layer_index)
 
-        inside = gf.boolean(reference, mask, operation="and", layer=layer_tuple)
-        outside = gf.boolean(reference, mask, operation="A-B", layer=layer_tuple)
+        low_mask, high_mask = self._build_half_plane_masks(reference, axis, value, layer_tuple)
+        low_region = _component_region(low_mask, layer_index)
+        high_region = _component_region(high_mask, layer_index)
+
+        first_region = region & low_region
+        second_region = region & high_region
 
         _remove_reference(component, reference)
         _remove_reference_name(component, polygon_name)
 
         new_refs: List[str] = []
-        if inside.get_polygons():
-            ref_inside = component.add_ref(inside, name=f"{polygon_name}_part1")
-            _register_reference_name(component, ref_inside.name, ref_inside)
-            new_refs.append(ref_inside.name)
-        if outside.get_polygons():
-            ref_outside = component.add_ref(outside, name=f"{polygon_name}_part2")
-            _register_reference_name(component, ref_outside.name, ref_outside)
-            new_refs.append(ref_outside.name)
+
+        if not first_region.is_empty():
+            first_component = gf.Component()#name=f"{polygon_name}_part1"
+            first_cell = _get_kdb_cell(first_component)
+            first_cell.shapes(layer_index).insert(first_region)
+            ref_first = component.add_ref(first_component, name=f"{polygon_name}_part1")
+            _register_reference_name(component, ref_first.name, ref_first)
+            new_refs.append(ref_first.name)
+            reference = self._get_reference(component, f"{polygon_name}_part1")
+            reference.dmove((-0.01, -0.01))
+
+        if not second_region.is_empty():
+            second_component = gf.Component()#name=f"{polygon_name}_part2"
+            second_cell = _get_kdb_cell(second_component)
+            second_cell.shapes(layer_index).insert(second_region)
+            ref_second = component.add_ref(second_component, name=f"{polygon_name}_part2")
+            _register_reference_name(component, ref_second.name, ref_second)
+            new_refs.append(ref_second.name)
+            reference = self._get_reference(component, f"{polygon_name}_part2")
+            reference.dmove((0.01, 0.01))
 
         return {
-            "content": f"Split polygon {polygon_name} into {', '.join(new_refs)}.",
+            "content": (
+                f"Split polygon {polygon_name} with {axis}={value} into {', '.join(new_refs)}."
+            ),
             "original_polygon": polygon_name,
             "new_references": new_refs,
+            "split_axis": axis,
+            "split_value": value,
         }
+    # def _execute(self, args: Dict[str, Any], component: component) -> Dict[str, Any] | None:
+    #     polygon_name = args["polygon_name"]
+    #     xmin, ymin, xmax, ymax = map(float, args["split_line_bbox"])
+    #     layer_tuple = tuple(args["layer"])
+    #     if len(layer_tuple) != 2:
+    #         raise ValueError("Layer must be specified as [layer, purpose].")
 
+    #     reference = self._get_reference(component, polygon_name)
+
+    #     mask = gf.Component(name="split_mask")
+    #     mask.add_polygon(
+    #         [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)],
+    #         layer=layer_tuple,
+    #     )
+
+    #     inside = gf.boolean(reference, mask, operation="and", layer=layer_tuple)
+    #     outside = gf.boolean(reference, mask, operation="A-B", layer=layer_tuple)
+
+    #     _remove_reference(component, reference)
+    #     _remove_reference_name(component, polygon_name)
+
+    #     new_refs: List[str] = []
+    #     if inside.get_polygons():
+    #         ref_inside = component.add_ref(inside, name=f"{polygon_name}_part1")
+    #         _register_reference_name(component, ref_inside.name, ref_inside)
+    #         new_refs.append(ref_inside.name)
+    #     if outside.get_polygons():
+    #         ref_outside = component.add_ref(outside, name=f"{polygon_name}_part2")
+    #         _register_reference_name(component, ref_outside.name, ref_outside)
+    #         new_refs.append(ref_outside.name)
+
+    #     return {
+    #         "content": f"Split polygon {polygon_name} into {', '.join(new_refs)}.",
+    #         "original_polygon": polygon_name,
+    #         "new_references": new_refs,
+    #     }
+
+def _component_region(comp: gf.Component, layer_index: int) -> kdb.Region:
+    """Return a :class:`kdb.Region` containing the shapes on ``layer_index``."""
+
+    cell = _get_kdb_cell(comp)
+    return kdb.Region(cell.begin_shapes_rec(layer_index))
 
 def _create_demo_component() -> component:
     """Create a demo component with a single rectangle reference."""
@@ -545,8 +818,8 @@ if __name__ == "__main__":
         split_tool,
         {
             "polygon_name": "demo_rect",
-            "split_line_bbox": [20.0, -5.0, 60.0, 25.0],
-            "layer": [1, 0],
+            "split_line": {"axis": "y", "value": 12.5},
+            #"layer": [1, 0],
         },
         demo_component,
         "After split",
