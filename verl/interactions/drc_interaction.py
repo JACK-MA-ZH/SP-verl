@@ -15,8 +15,8 @@ from PIL import Image
 # [CRITICAL IMPORT] 从你的工具库中导入渲染函数
 from verl.utils.drc.drc_tool import (
     MovePolygonTool, 
-    DeletePolygonTool, 
-    OffsetPolygonTool, 
+    # DeletePolygonTool, 
+    # OffsetPolygonTool, 
     SplitPolygonTool,
     component_to_pil_image,  # <--- 必须使用这个函数来渲染
     _ensure_named_instance_map,
@@ -41,8 +41,8 @@ class DRCInteraction(BaseInteraction):
         # 初始化工具逻辑
         self.tool_map = {
             "op_move_polygon": MovePolygonTool(),
-            "op_delete_polygon": DeletePolygonTool(),
-            "op_offset_polygon": OffsetPolygonTool(),
+            # "op_delete_polygon": DeletePolygonTool(),
+            # "op_offset_polygon": OffsetPolygonTool(),
             "op_split_polygon": SplitPolygonTool(),
         }
     def get_schematic(self, component) -> str:

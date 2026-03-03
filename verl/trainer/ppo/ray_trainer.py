@@ -962,7 +962,17 @@ class RayPPOTrainer:
         metrics.update(global_balance_stats)
     def _run_drc_episode_and_prepare_batch(self, batch: DataProto) -> tuple[DataProto, dict]:
         timing_raw = {}
-        
+        batch=batch.repeat(
+                    repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
+                )
+        new_uids = []
+        for old_uid in batch.non_tensor_batch["uid"]:
+            # 加上 8 位随机哈希后缀，例如: train_sample_001_a1b2c3d4
+            unique_suffix = uuid.uuid4().hex[:8]
+            new_uids.append(f"{old_uid}_{unique_suffix}")
+
+        # 覆盖掉原本全员重复的 uid 列表
+        batch.non_tensor_batch["uid"] = np.array(new_uids, dtype=object)
         # --- STAGE 1: Generator Episode ---
         with marked_timer("step", timing_raw, color="red"):
             if not self.async_rollout_mode:

@@ -36,54 +36,54 @@ class MovePolygonTool(BaseTool):
         # Thin execution: Just serialize the call for the Interaction layer
         return ToolResponse(text=json.dumps({"tool": "op_move_polygon", "args": parameters})), 0.0, {}
 
-class DeletePolygonTool(BaseTool):
-    def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema):
-        _tool_schema = OpenAIFunctionToolSchema.model_validate({
-            "type": "function",
-            "function": {
-                "name": "op_delete_polygon",
-                "description": "Deletes a specified polygon/instance from the layout.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "polygon_name": {"type": "string", "description": "Name of the polygon/instance to delete."},
-                    },
-                    "required": ["polygon_name"],
-                },
-            }
-        })
-        super().__init__(config, _tool_schema)
+# class DeletePolygonTool(BaseTool):
+#     def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema):
+#         _tool_schema = OpenAIFunctionToolSchema.model_validate({
+#             "type": "function",
+#             "function": {
+#                 "name": "op_delete_polygon",
+#                 "description": "Deletes a specified polygon/instance from the layout.",
+#                 "parameters": {
+#                     "type": "object",
+#                     "properties": {
+#                         "polygon_name": {"type": "string", "description": "Name of the polygon/instance to delete."},
+#                     },
+#                     "required": ["polygon_name"],
+#                 },
+#             }
+#         })
+#         super().__init__(config, _tool_schema)
         
-    async def execute(self, instance_id: str, parameters: dict[str, Any], **kwargs) -> tuple[ToolResponse, float, dict]:
-        return ToolResponse(text=json.dumps({"tool": "op_delete_polygon", "args": parameters})), 0.0, {}
+#     async def execute(self, instance_id: str, parameters: dict[str, Any], **kwargs) -> tuple[ToolResponse, float, dict]:
+#         return ToolResponse(text=json.dumps({"tool": "op_delete_polygon", "args": parameters})), 0.0, {}
 
-class OffsetPolygonTool(BaseTool):
-    def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema):
-        _tool_schema = OpenAIFunctionToolSchema.model_validate({
-            "type": "function",
-            "function": {
-                "name": "op_offset_polygon",
-                "description": "Offsets (shrinks/grows) a polygon by a specific distance on a specific layer.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "polygon_name": {"type": "string", "description": "Name of the polygon/instance to offset."},
-                        "distance": {"type": "number", "description": "Offset distance (um). Negative shrinks, positive grows."},
-                        "layer": {
-                            "type": "array",
-                            "items": {"type": "number"},
-                            "minItems": 2, "maxItems": 2,
-                            "description": "GDS Layer [layer, purpose], e.g., [1, 0]."
-                        },
-                    },
-                    "required": ["polygon_name", "distance", "layer"],
-                },
-            }
-        })
-        super().__init__(config, _tool_schema)
+# class OffsetPolygonTool(BaseTool):
+#     def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema):
+#         _tool_schema = OpenAIFunctionToolSchema.model_validate({
+#             "type": "function",
+#             "function": {
+#                 "name": "op_offset_polygon",
+#                 "description": "Offsets (shrinks/grows) a polygon by a specific distance on a specific layer.",
+#                 "parameters": {
+#                     "type": "object",
+#                     "properties": {
+#                         "polygon_name": {"type": "string", "description": "Name of the polygon/instance to offset."},
+#                         "distance": {"type": "number", "description": "Offset distance (um). Negative shrinks, positive grows."},
+#                         "layer": {
+#                             "type": "array",
+#                             "items": {"type": "number"},
+#                             "minItems": 2, "maxItems": 2,
+#                             "description": "GDS Layer [layer, purpose], e.g., [1, 0]."
+#                         },
+#                     },
+#                     "required": ["polygon_name", "distance", "layer"],
+#                 },
+#             }
+#         })
+#         super().__init__(config, _tool_schema)
         
-    async def execute(self, instance_id: str, parameters: dict[str, Any], **kwargs) -> tuple[ToolResponse, float, dict]:
-        return ToolResponse(text=json.dumps({"tool": "op_offset_polygon", "args": parameters})), 0.0, {}
+    # async def execute(self, instance_id: str, parameters: dict[str, Any], **kwargs) -> tuple[ToolResponse, float, dict]:
+    #     return ToolResponse(text=json.dumps({"tool": "op_offset_polygon", "args": parameters})), 0.0, {}
         
 class SplitPolygonTool(BaseTool):
     def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema):

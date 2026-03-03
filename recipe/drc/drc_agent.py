@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any
 from uuid import uuid4
-
+import copy
 from verl.experimental.agent_loop.agent_loop import AgentLoopOutput, register
 from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop,AgentData
 from verl.interactions.drc_interaction import DRCInteraction
@@ -62,11 +62,11 @@ class DRCAgentLoop(ToolAgentLoop):
         # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
         # kwargs 是从 DataProto.non_tensor_batch 中解包出来的单个样本数据
         uid = kwargs.get("uid", f"unknown_{uuid4().hex}")
-        messages = list(kwargs["raw_prompt"])
+        messages = copy.deepcopy(list(kwargs["raw_prompt"]))
         # Initial layout image and GDS path
-        multi_modal_data = kwargs["multi_modal_data"]
+        multi_modal_data = copy.deepcopy(kwargs["multi_modal_data"])
         # Initial "clean" layout image
-        initial_image = multi_modal_data["image"]
+        initial_image = copy.deepcopy(multi_modal_data["image"])
         
         metrics = {}
         request_id = uuid4().hex
