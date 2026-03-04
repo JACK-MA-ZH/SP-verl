@@ -71,7 +71,7 @@ class DRCRewardManager(AbstractRewardManager):
             r_gen = r_target_hit + r_challenge
             
             # --- Calculate R_fix ---
-            if n_after == 0:
+            if n_after == 0 and n_before!=0:
                 r_drc_clean = self.C2_DRC_CLEAN_PERFECT
             else:
                 initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)

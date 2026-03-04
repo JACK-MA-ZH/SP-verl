@@ -207,12 +207,15 @@ class DRCAgentLoop(ToolAgentLoop):
                 ]
             }
         ]
-        agent_data.messages.extend(new_messages)
-        agent_data.image_data.append(new_image) # Add new image to the history
+        
         
         # Update prompt with tool responses and the new image
         raw_tool_response_text = self.processor.apply_chat_template(
-            new_messages, add_generation_prompt=True, tokenize=False, **self.apply_chat_template_kwargs
+            new_messages,          
+            tools=self.tool_schemas,      # 注意：必须再次带上工具 schema！, 
+            add_generation_prompt=True, 
+            tokenize=False, 
+            **self.apply_chat_template_kwargs
         )
         model_inputs = self.processor(text=[raw_tool_response_text], images=[new_image], return_tensors="pt")
         response_ids = model_inputs.pop("input_ids").squeeze(0).tolist()
@@ -221,6 +224,8 @@ class DRCAgentLoop(ToolAgentLoop):
         if len(agent_data.response_mask) + len(response_ids) >= self.response_length:
             return AgentState.TERMINATED
         
+        agent_data.messages.extend(new_messages)
+        agent_data.image_data.append(new_image) # Add new image to the history
         # Update prompt_ids and response_mask
         agent_data.prompt_ids += response_ids
         agent_data.response_mask += [0] * len(response_ids)

@@ -62,17 +62,17 @@ actor_rollout_ref:
     kl_loss_coef: 0.01
     kl_loss_type: low_var_kl
     entropy_coeff: 0.0
-    
+    strategy: fsdp2
     # FSDP 策略 (显存优化)
     fsdp_config:
       param_offload: False
       optimizer_offload: False
-      wrap_policy:
+      #wrap_policy:
         # transformer_layer_cls_to_wrap: [Qwen2VLDecoderLayer] # 根据模型结构自动推断，通常不需要手写
 
   # --- Rollout 配置 (vLLM / SGLang) ---
   rollout:
-    name: vllm
+    name: sglang
     gpu_memory_utilization: 0.5  # 留一半显存给 Training Actor
     tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
     mode: async
@@ -100,6 +100,7 @@ actor_rollout_ref:
   # --- Ref Model 配置 (通常 Offload 到 CPU 省显存) ---
   ref:
     log_prob_micro_batch_size_per_gpu: 1
+    strategy: fsdp2
     fsdp_config:
       param_offload: True  # 将 Ref 模型参数卸载到 CPU
 

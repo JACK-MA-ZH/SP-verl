@@ -3,7 +3,8 @@ import sys
 import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
-
+import torch.multiprocessing as mp
+mp.set_sharing_strategy('file_system')
 # 1. 将项目根目录加入路径，确保能找到 recipe 模块
 sys.path.append(os.getcwd())
 sys.path.append(".")
