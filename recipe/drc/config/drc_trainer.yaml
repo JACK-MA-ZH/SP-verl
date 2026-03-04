@@ -7,6 +7,7 @@ trainer:
   experiment_name: drc_gen_vs_fix_grpo_v2
   total_epochs: 15
   n_gpus_per_node: 1
+  val_before_train: False
   nnodes: 1
   save_freq: 0
   test_freq: 0
@@ -77,7 +78,7 @@ actor_rollout_ref:
     tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
     mode: async
     # [关键] GRPO 需要多次采样来计算 Baseline
-    n: 5  # 每个 Prompt 生成 5 条回复
+    n: 1  # 每个 Prompt 生成 5 条回复
     
     # 推理时的 Batch Size
     log_prob_micro_batch_size_per_gpu: 1
