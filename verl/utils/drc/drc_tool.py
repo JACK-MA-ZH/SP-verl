@@ -118,6 +118,20 @@ def _build_label_lookup(component_to_plot: component) -> List[Dict[str, object]]
         return [dict(entry) for entry in labels]
     return []
 
+def get_all_polygon_names(component_to_plot) -> list[str]:
+    """从 component 的 info 中提取所有记录的 polygon 名称"""
+    # 如果你在其他文件，请确保导入了 POLYGON_LABELS_KEY
+    # POLYGON_LABELS_KEY = "polygon_labels" 
+    labels = getattr(component_to_plot, "info", {}).get(POLYGON_LABELS_KEY, [])
+    
+    names = []
+    if isinstance(labels, Iterable):
+        for entry in labels:
+            entry_dict = dict(entry)
+            # 假设名字保存在 'name' 键中
+            if "name" in entry_dict:
+                names.append(entry_dict["name"])
+    return names
 
 def _find_polygon_label(
     label_entries: List[Dict[str, object]],

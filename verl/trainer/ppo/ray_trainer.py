@@ -973,6 +973,7 @@ class RayPPOTrainer:
 
         # 覆盖掉原本全员重复的 uid 列表
         batch.non_tensor_batch["uid"] = np.array(new_uids, dtype=object)
+        batch.non_tensor_batch["phase"] = np.array(["gen"] * len(batch), dtype=object)
         # --- STAGE 1: Generator Episode ---
         with marked_timer("step", timing_raw, color="red"):
             if not self.async_rollout_mode:
@@ -1005,11 +1006,12 @@ class RayPPOTrainer:
         for i in range(len(batch)):
             uid = batch.non_tensor_batch["uid"][i]
             generated_gds_path = os.path.join(save_dir, f"{uid}.gds")
-            component = gf.import_gds(generated_gds_path)
+            component = gf.import_gds(generated_gds_path,rename_duplicated_cells=True)
                 # 使用你的 drc_tool.py 中的函数进行渲染
             real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
             # 1. 构造 Prompt
-            prompt_text = "The previous layout has errors. Please use op_move to fix them."
+            available_polygons = [inst.name for inst in component.insts]
+            prompt_text  = f"The layout has DRC errors. Your goal is to completely clean the layout.\nAvailable polygons: {available_polygons}.\nYou can use the 'op_move_polygon' tool iteratively. After each move, check the 'Current DRC Status'. Do not stop until the status explicitly says 'No DRC errors found'. Terminate the session only when it is 100% clean."
             msgs = [{
                 "role": "user",
                 "content": [
@@ -1074,7 +1076,7 @@ class RayPPOTrainer:
                 "extra_info": np.array(fixer_extra_info, dtype=object)
             }
         )
-
+        fixer_batch.non_tensor_batch["phase"] = np.array(["fix"] * len(fixer_batch), dtype=object)
         # --- STAGE 3: Fixer Execution ---
         with marked_timer("fix_episode_rollout", timing_raw, color="blue"):
             if not self.async_rollout_mode:

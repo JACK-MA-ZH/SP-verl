@@ -110,9 +110,7 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
         # 这是 Generator Agent 看到的任务描述
         prompt = (
             "<image>\n"  # <--- 注意这里增加了 <image>
-            "You have a clean layout with a square named 'square_1'. "
-            "Your task is to create a DRC spacing violation. "
-            "Use 'op_split_polygon' to split 'square_1' or existing  instance to create spacing errors "
+            "You have a clean layout. Your ultimate goal is to maximize the number of distinct DRC spacing violations.\nAvailable polygons: square_1.\nYou can use the 'op_split_polygon' tool as many times as you need. Keep splitting until you think you have created the maximum possible chaos. Terminate the session only when you are satisfied with the destruction."
         )
         
         # 5. 记录元数据 (对应 DRCDataset 的字段)

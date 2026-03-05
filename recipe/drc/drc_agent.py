@@ -10,7 +10,7 @@ from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLo
 from verl.interactions.drc_interaction import DRCInteraction
 from verl.tools.schemas import ToolResponse
 from verl.utils.profiler import simple_timer
-
+import gdsfactory as gf
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 try:
@@ -42,6 +42,8 @@ class DRCAgentData(AgentData):
         self.response_mask: list[int] = []
         self.response_logprobs: list[float] = []
 
+        self.phase = "gen"
+        self.active_tool_schemas = []
         self.drc_errors_at_start = 0
         self.drc_errors_at_end = 0
         self.fix_ops_count = 0
@@ -56,7 +58,7 @@ class DRCAgentLoop(ToolAgentLoop):
     """
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         
-        logger.info(f"[DRCAgentLoop] begin drc loop")
+        phase = kwargs.get("phase", "gen")
         #raise TypeError("drc going")
         # Initial prompt for the generator
         # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
@@ -92,6 +94,14 @@ class DRCAgentLoop(ToolAgentLoop):
         )
         agent_data.drc_errors_at_start = interaction._instance_dict[request_id]["drc_errors"]
         
+        agent_data.phase = phase
+        if phase == "gen":
+            allowed_tools = ["op_split_polygon"]
+        else:
+            allowed_tools = ["op_move_polygon"]
+        agent_data.active_tool_schemas = [
+            t for t in self.tool_schemas if t["function"]["name"] in allowed_tools
+        ]
         state = AgentState.PENDING
         turn_count = 1
         while state != AgentState.TERMINATED:
@@ -212,7 +222,7 @@ class DRCAgentLoop(ToolAgentLoop):
         # Update prompt with tool responses and the new image
         raw_tool_response_text = self.processor.apply_chat_template(
             new_messages,          
-            tools=self.tool_schemas,      # 注意：必须再次带上工具 schema！, 
+            tools=agent_data.active_tool_schemas,#self.tool_schemas,      # 注意：必须再次带上工具 schema！, 
             add_generation_prompt=True, 
             tokenize=False, 
             **self.apply_chat_template_kwargs

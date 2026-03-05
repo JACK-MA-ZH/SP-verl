@@ -66,7 +66,7 @@ class DRCRewardManager(AbstractRewardManager):
             n_fix_ops = fix_traj.non_tensor_batch.get("num_fix_ops", 0)
             
             # --- Calculate R_gen ---
-            r_target_hit = self.C1_TARGET_HIT_POSITIVE if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
+            r_target_hit = self.C1_TARGET_HIT_POSITIVE*n_before if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
             r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
             r_gen = r_target_hit + r_challenge
             
