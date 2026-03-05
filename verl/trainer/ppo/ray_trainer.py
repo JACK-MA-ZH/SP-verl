@@ -28,7 +28,7 @@ from pprint import pprint
 from typing import Optional
 import gdsfactory as gf
 from verl.utils.drc.drc_tool import component_to_pil_image
-
+import random
 import numpy as np
 import ray
 import torch
@@ -1002,8 +1002,13 @@ class RayPPOTrainer:
 
         # 使用 trainer 自带的 tokenizer
         tokenizer = self.tokenizer
-
+        idx = random.randint(0, len(gen_batch_output) - 1)
+        selected_gen_batch = gen_batch_output[idx : idx + 1]
+        selected_gen_batch=selected_gen_batch.repeat(
+                    repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
+                )
         for i in range(len(batch)):
+            
             uid = batch.non_tensor_batch["uid"][i]
             generated_gds_path = os.path.join(save_dir, f"{uid}.gds")
             component = gf.import_gds(generated_gds_path,rename_duplicated_cells=True)
@@ -1047,7 +1052,8 @@ class RayPPOTrainer:
             fixer_interaction_kwargs.append({
                 "clean_layout_gds_path": generated_gds_path
             })
-            fixer_uids.append(f"{uid}_fix")
+            unique_suffix = uuid.uuid4().hex[:8]
+            fixer_uids.append(f"{unique_suffix}_fix")
             fixer_raw_prompts.append(msgs)
             fixer_extra_info.append({})
 
