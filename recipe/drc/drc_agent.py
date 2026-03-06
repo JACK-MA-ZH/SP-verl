@@ -146,7 +146,7 @@ class DRCAgentLoop(ToolAgentLoop):
         agent_data.fix_ops_count = final_state.get("fix_ops_count", 0)
         
         save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
-        final_image = final_state.get("fix_ops_count", 0)
+        final_image = final_state.get("image")
         final_image.save(os.path.join(save_dir, f"{uid}.png"))
         # 2. [关键修改] Loop 结束后，保存 GDS 状态到磁盘
         # 这样 Trainer 只需要知道 UID 就能找到对应的 GDS，不需要回传路径
