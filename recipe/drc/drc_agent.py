@@ -145,9 +145,12 @@ class DRCAgentLoop(ToolAgentLoop):
         agent_data.drc_errors_at_end = final_state.get("drc_errors", -1)
         agent_data.fix_ops_count = final_state.get("fix_ops_count", 0)
         
+        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
+        final_image = final_state.get("fix_ops_count", 0)
+        final_image.save(os.path.join(save_dir, f"{uid}.png"))
         # 2. [关键修改] Loop 结束后，保存 GDS 状态到磁盘
         # 这样 Trainer 只需要知道 UID 就能找到对应的 GDS，不需要回传路径
-        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
+        
         os.makedirs(save_dir, exist_ok=True)
         gds_save_path = os.path.join(save_dir, f"{uid}.gds")
         # 调用 Interaction 的保存功能 (需要确保 Interaction 有这个接口，或者直接用 component write)
@@ -165,12 +168,22 @@ class DRCAgentLoop(ToolAgentLoop):
         # Finalize and prepare output
         response_ids = agent_data.prompt_ids[-len(agent_data.response_mask) :]
         prompt_ids = agent_data.prompt_ids[: len(agent_data.prompt_ids) - len(agent_data.response_mask)]
-
+        last_drc_message = "No DRC errors found." # 默认兜底
+        for msg in reversed(agent_data.messages):
+            if msg["role"] == "tool":
+                content = msg["content"]
+                if isinstance(content, list):
+                    for item in content:
+                        if item.get("type") == "text":
+                            last_drc_message = item.get("text")
+                            break
+                break
         drc_info = {
             "uid": uid,
             "drc_errors_before": agent_data.drc_errors_at_start,
             "drc_errors_after": agent_data.drc_errors_at_end,
             "num_fix_ops": agent_data.fix_ops_count,
+            "final_drc_message": last_drc_message
         }
         metrics_to_return={}
         

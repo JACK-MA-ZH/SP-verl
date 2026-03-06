@@ -53,22 +53,23 @@ class DRCRewardManager(AbstractRewardManager):
         assert batch_size % 2 == 0, "Batch size must be even for gen/fix pairs."
         
         reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
-        
-        for i in range(0, batch_size, 2):
+        half_batch = batch_size // 2
+        for i in range(0, half_batch):
             # Extract trajectories for one episode
             gen_traj = data[i]
-            fix_traj = data[i+1]
+            fix_traj = data[i + half_batch]
             
             # Extract metrics from trajectories
             # These must be populated by the agent loop and trainer
-            n_before = gen_traj.non_tensor_batch.get("drc_errors_after", 0)
+            gen_n_after=gen_traj.non_tensor_batch.get("drc_errors_after", 0)
+            n_before = fix_traj.non_tensor_batch.get("drc_errors_before", 0)
             n_after = fix_traj.non_tensor_batch.get("drc_errors_after", 0)
             n_fix_ops = fix_traj.non_tensor_batch.get("num_fix_ops", 0)
             
             # --- Calculate R_gen ---
-            r_target_hit = self.C1_TARGET_HIT_POSITIVE*n_before if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
+            r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
             r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
-            r_gen = r_target_hit + r_challenge
+            r_gen = r_target_hit #+ r_challenge
             
             # --- Calculate R_fix ---
             if n_after == 0 and n_before!=0:
@@ -102,7 +103,7 @@ class DRCRewardManager(AbstractRewardManager):
             # Logging for debugging
             if 1:#self.print_count < self.num_examine:
                 print("-" * 20)
-                print(f"Episode Pair {i//2}:")
+                print(f"Episode Pair {i}:")
                 print(f"  N_before={n_before}, N_after={n_after}, N_fix_ops={n_fix_ops}")
                 print(f"  R_gen = {r_gen:.2f}, R_fix = {r_fix:.2f}")
                 print(f"  Dynamic Weights: w_gen={self.w_gen:.2f}, w_fix={self.w_fix:.2f}")

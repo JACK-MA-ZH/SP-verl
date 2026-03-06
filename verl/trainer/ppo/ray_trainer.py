@@ -984,7 +984,7 @@ class RayPPOTrainer:
             
         
         gen_metrics = gen_batch_output.non_tensor_batch.get("metrics", [])
-
+        
         # --- STAGE 2: Fixer Episode Preparation ---
         # 这一步我们必须手动构建 Fixer 的 Batch，因为它不是从 DataLoader 读出来的
         
@@ -1002,21 +1002,39 @@ class RayPPOTrainer:
 
         # 使用 trainer 自带的 tokenizer
         tokenizer = self.tokenizer
-        idx = random.randint(0, len(gen_batch_output) - 1)
-        selected_gen_batch = gen_batch_output[idx : idx + 1]
+        errors_list = gen_batch_output.non_tensor_batch.get("drc_errors_after", [0] * len(gen_batch_output))
+
+        # 2. 找到错误数量最多的那个索引 (如果有多个最大值，默认返回第一个)
+        best_idx = int(np.argmax(errors_list))
+
+        print(f"\n[Trainer] Selected the hardest generation: {errors_list[best_idx]} errors (Index: {best_idx})")
+
+        # 3. 使用切片 [best_idx : best_idx + 1] 提取这条最难的数据
+        selected_gen_batch = gen_batch_output[best_idx : best_idx + 1]
+        # idx = random.randint(0, len(gen_batch_output) - 1)
+        # selected_gen_batch = gen_batch_output[idx : idx + 1]
+        
         selected_gen_batch=selected_gen_batch.repeat(
                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                 )
-        for i in range(len(batch)):
+        for i in range(len(selected_gen_batch)):
             
-            uid = batch.non_tensor_batch["uid"][i]
+            uid = selected_gen_batch.non_tensor_batch["uid"][i]
             generated_gds_path = os.path.join(save_dir, f"{uid}.gds")
             component = gf.import_gds(generated_gds_path,rename_duplicated_cells=True)
                 # 使用你的 drc_tool.py 中的函数进行渲染
             real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
             # 1. 构造 Prompt
             available_polygons = [inst.name for inst in component.insts]
-            prompt_text  = f"The layout has DRC errors. Your goal is to completely clean the layout.\nAvailable polygons: {available_polygons}.\nYou can use the 'op_move_polygon' tool iteratively. After each move, check the 'Current DRC Status'. Do not stop until the status explicitly says 'No DRC errors found'. Terminate the session only when it is 100% clean."
+            drc_status_text = selected_gen_batch.non_tensor_batch["final_drc_message"][i]
+            prompt_text  = (f"The layout may has errors. Your task is to fix ALL of them.\n\n"
+            f"Available polygons to operate on: {available_polygons}.\n"
+            f"Do NOT use any other names. The DRC rule is: spacing should be larger than 1. \n\n"
+            f"Here is the Current DRC Status you need to resolve:\n"
+            f"{drc_status_text}\n\n"
+            f"Think step by step and use op_move_polygon to resolve the spacing violations.")
+            
+            # f"The layout may has DRC errors. Your goal is to completely clean the layout.\nAvailable polygons: {available_polygons}.\nYou can use the 'op_move_polygon' tool iteratively. After each move, check the 'Current DRC Status'. Do not stop until the status explicitly says 'No DRC errors found'. Terminate the session only when it is 100% clean."
             msgs = [{
                 "role": "user",
                 "content": [
