@@ -147,16 +147,16 @@ class DRCInteraction(BaseInteraction):
         """
         [FIXED] Uses component_to_pil_image from utils instead of component.to_png
         """
-        try:
-            return component_to_pil_image(
+        
+        return component_to_pil_image(
                 component,
                 title=f"layout_{instance_id}",
                 bbox=None 
             )
-        except Exception as e:
-            logger.error(f"Render failed for {instance_id}: {e}")
-            # 返回一个红色的错误占位图，防止 pipeline 崩溃
-            return Image.new('RGB', (224, 224), color='red')
+        # except Exception as e:
+        #     logger.error(f"Render failed for {instance_id}: {e}")
+        #     # 返回一个红色的错误占位图，防止 pipeline 崩溃
+        #     return Image.new('RGB', (224, 224), color='red')
 
     async def start_interaction(self, instance_id: Optional[str] = None, **kwargs) -> str:
         if instance_id is None:
@@ -209,7 +209,7 @@ class DRCInteraction(BaseInteraction):
                 state["fix_ops_count"] += 1
 
         except Exception as e:
-            traceback.print_exc()
+            #traceback.print_exc()
             logger.error(f"Error executing tool: {e}")#{tool_name}
             action_feedback = f"Tool execution failed: {e}"
 

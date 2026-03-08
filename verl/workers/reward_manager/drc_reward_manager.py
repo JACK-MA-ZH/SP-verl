@@ -98,7 +98,7 @@ class DRCRewardManager(AbstractRewardManager):
             if gen_valid_len > 0:
                 reward_tensor[i, gen_valid_len - 1] = final_r_gen
             if fix_valid_len > 0:
-                reward_tensor[i + 1, fix_valid_len - 1] = final_r_fix
+                reward_tensor[i + half_batch, fix_valid_len - 1] = final_r_fix
 
             # Logging for debugging
             if 1:#self.print_count < self.num_examine:

@@ -19,8 +19,8 @@ data:
   train_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/train.parquet
   val_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/val.parquet
   #prompt_key: generation_prompt
-  max_prompt_length: 4096
-  max_response_length: 4096
+  max_prompt_length: 8192
+  max_response_length: 8192
   train_batch_size: 1  # 全局 Batch Size (PPO update step size)
   filter_overlong_prompts: True
   truncation: error
@@ -78,7 +78,7 @@ actor_rollout_ref:
     tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
     mode: async
     # [关键] GRPO 需要多次采样来计算 Baseline
-    n: 5  # 每个 Prompt 生成 5 条回复
+    n: 64  # 每个 Prompt 生成 64 条回复
     
     # 推理时的 Batch Size
     log_prob_micro_batch_size_per_gpu: 1

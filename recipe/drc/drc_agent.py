@@ -111,25 +111,29 @@ class DRCAgentLoop(ToolAgentLoop):
                 # ==========================================
                 # 1. 打印 LLM 的输入 (当前所有的历史消息)
                 # ==========================================
-                print(f"\n\n{'='*20} [TURN {turn_count}] LLM INPUT {'='*20}")
+                with open('llm_output.log', 'a') as f:
+                    f.write(f"\n\n{'='*20} [TURN {turn_count}] LLM INPUT {'='*20}")
                 # 为了美观，可以只打印最后两三条，或者完整打印
                 for msg in agent_data.messages:
                     # 如果 content 是列表(包含图片字典)，截断打印避免刷屏
                     content_str = str(msg['content'])
                     # if len(content_str) > 500:
                     #     content_str = content_str[:500] + " ... [TRUNCATED]"
-                    print(f"[{msg['role'].upper()}]: {content_str}")
-                print(f"{'='*60}\n")
+                    with open('llm_output.log', 'a') as f:
+                        f.write(f"[{msg['role'].upper()}]: {content_str}")
+                with open('llm_output.log', 'a') as f:
+                    f.write(f"{'='*60}\n")
                 
                 state = await self._handle_generating_state(agent_data, sampling_params, ignore_termination=True)
                 
                 # ==========================================
                 # 2. 打印 LLM 的输出 (最新追加的 assistant 消息)
                 # ==========================================
-                print(f"\n{'='*20} [TURN {turn_count}] LLM OUTPUT {'='*20}")
-                last_msg = agent_data.messages[-1]
-                print(f"[{last_msg['role'].upper()}]: {last_msg['content']}")
-                print(f"{'='*60}\n")
+                with open('llm_output.log', 'a') as f:
+                    f.write(f"\n{'='*20} [TURN {turn_count}] LLM OUTPUT {'='*20}")
+                    last_msg = agent_data.messages[-1]
+                    f.write(f"[{last_msg['role'].upper()}]: {last_msg['content']}")
+                    f.write(f"{'='*60}\n")
             elif state == AgentState.PROCESSING_TOOLS:
                 state = await self._handle_drc_tool_processing(agent_data)
                 turn_count = turn_count+1

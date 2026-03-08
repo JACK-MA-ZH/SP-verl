@@ -4,6 +4,14 @@ import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch.multiprocessing as mp
+
+# 检查文件是否存在并删除
+file_path = "llm_output.log"
+if os.path.isfile(file_path):
+    os.remove(file_path)
+    print("文件已成功删除")
+else:
+    print("文件不存在")
 mp.set_sharing_strategy('file_system')
 # 1. 将项目根目录加入路径，确保能找到 recipe 模块
 sys.path.append(os.getcwd())

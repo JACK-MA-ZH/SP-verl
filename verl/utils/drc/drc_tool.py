@@ -233,6 +233,8 @@ def plot_with_labels_and_vertices(
             color_index += 1
 
             points_array = np.asarray(poly, dtype=float)
+            if points_array.size == 0 or points_array.ndim != 2 or points_array.shape[1] != 2:
+                continue
             patch = Polygon(
                 points_array,
                 closed=True,
