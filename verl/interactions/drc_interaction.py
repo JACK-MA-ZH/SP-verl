@@ -183,7 +183,8 @@ class DRCInteraction(BaseInteraction):
             "drc_errors": num_errors,
             "drc_message": error_message,
             "fix_ops_count": 0,
-            "history": [] 
+            "history": [] ,
+            "move_penalty": 0
         }
         return instance_id
 
@@ -191,7 +192,7 @@ class DRCInteraction(BaseInteraction):
         state = self._instance_dict[instance_id]
         component = state["component"]
 
-
+        move_penalty=0
         try:
             payload = json.loads(tool_payload_json)
             tool_name = payload.get("tool")
@@ -205,6 +206,11 @@ class DRCInteraction(BaseInteraction):
             result = tool.execute(args=args, component=component)
             action_feedback = result.get("content", str(result))
             
+            if tool_name=="op_move_polygon":
+                dx = float(args["dx"])
+                dy = float(args["dy"])
+                move_penalty=dx+dy
+                state["move_penalty"] += move_penalty
             if "fix_ops_count" in state:
                 state["fix_ops_count"] += 1
 

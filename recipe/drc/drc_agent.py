@@ -47,6 +47,7 @@ class DRCAgentData(AgentData):
         self.drc_errors_at_start = 0
         self.drc_errors_at_end = 0
         self.fix_ops_count = 0
+        self.move_penalty=0
         #self.assistant_turns = 0
 
 
@@ -164,7 +165,7 @@ class DRCAgentLoop(ToolAgentLoop):
         logger.info(f"[DRCAgentLoop] Saved GDS to {gds_save_path}")
         agent_data.drc_errors_at_end = final_state.get("drc_errors", -1)
         agent_data.fix_ops_count = final_state.get("fix_ops_count", 0)
-
+        agent_data.move_penalty = final_state.get("move_penalty", 0)
  
 
         await interaction.release(request_id)
@@ -187,7 +188,8 @@ class DRCAgentLoop(ToolAgentLoop):
             "drc_errors_before": agent_data.drc_errors_at_start,
             "drc_errors_after": agent_data.drc_errors_at_end,
             "num_fix_ops": agent_data.fix_ops_count,
-            "final_drc_message": last_drc_message
+            "final_drc_message": last_drc_message,
+            "move_penalty": agent_data.move_penalty
         }
         metrics_to_return={}
         

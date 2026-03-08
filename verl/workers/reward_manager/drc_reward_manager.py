@@ -32,7 +32,7 @@ class DRCRewardManager(AbstractRewardManager):
         self.C1_TARGET_HIT_NEGATIVE = -5.0
         self.C2_DRC_CLEAN_PERFECT = 10.0
         self.WC_CHALLENGE_WEIGHT = 0.2
-        self.WR_REDUCTION_WEIGHT = 1.0
+        self.WR_REDUCTION_WEIGHT = 5.0
         self.WP_PERTURBATION_PENALTY = 0.1
         
         # State for dynamic weighting
@@ -65,20 +65,20 @@ class DRCRewardManager(AbstractRewardManager):
             n_before = fix_traj.non_tensor_batch.get("drc_errors_before", 0)
             n_after = fix_traj.non_tensor_batch.get("drc_errors_after", 0)
             n_fix_ops = fix_traj.non_tensor_batch.get("num_fix_ops", 0)
-            
+            move_penalty = fix_traj.non_tensor_batch.get("move_penalty", 0)
             # --- Calculate R_gen ---
             r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
             r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
             r_gen = r_target_hit #+ r_challenge
             
             # --- Calculate R_fix ---
-            if n_after == 0 and n_before!=0:
-                r_drc_clean = self.C2_DRC_CLEAN_PERFECT
-            else:
-                initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)
-                r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
+            # if n_after == 0 and n_before!=0:
+            #     r_drc_clean = self.C2_DRC_CLEAN_PERFECT
+            # else:
+            initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)
+            r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
             
-            r_perturbation = -self.WP_PERTURBATION_PENALTY * n_fix_ops
+            r_perturbation = -self.WP_PERTURBATION_PENALTY * (n_fix_ops+move_penalty)
             r_fix = r_drc_clean + r_perturbation
             
             # --- Apply dynamic weights ---
