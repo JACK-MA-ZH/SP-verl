@@ -209,7 +209,7 @@ class DRCInteraction(BaseInteraction):
             if tool_name=="op_move_polygon":
                 dx = float(args["dx"])
                 dy = float(args["dy"])
-                move_penalty=dx+dy
+                move_penalty=abs(dx)+abs(dy)
                 state["move_penalty"] += move_penalty
             if "fix_ops_count" in state:
                 state["fix_ops_count"] += 1
