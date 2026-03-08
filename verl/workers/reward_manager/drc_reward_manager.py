@@ -77,7 +77,7 @@ class DRCRewardManager(AbstractRewardManager):
             # else:
             initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)
             r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
-            
+            move_penalty=min(200,move_penalty)
             r_perturbation = -self.WP_PERTURBATION_PENALTY * (n_fix_ops+move_penalty)
             r_fix = r_drc_clean + r_perturbation
             
