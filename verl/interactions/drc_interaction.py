@@ -68,8 +68,82 @@ class DRCInteraction(BaseInteraction):
                 reference.name = f"p{index}"
             comp.named_instances[reference.name] = reference
 
+    # def _get_drc_violations(self, component) -> tuple[int, str]:
+    #     """Runs DRC checks strictly using klayout.db."""
+    #     import klayout.db as kdb
+
+    #     if component is None:
+    #         return 0, "No component loaded."
+
+    #     def _bbox_to_tuple(box, dbu: float) -> tuple[float, float, float, float]:
+    #         return (
+    #             float(box.left) * dbu,
+    #             float(box.bottom) * dbu,
+    #             float(box.right) * dbu,
+    #             float(box.top) * dbu,
+    #         )
+
+    #     # Target DRC rules from your second snippet
+    #     min_spacing = 0.1
+    #     min_width = 0.01
+
+    #     try:
+    #         layout = component.kcl.layout
+    #         dbu = float(getattr(layout, "dbu", 1.0) or 1.0)
+    #         layer_index = int(layout.layer(1, 0))
+
+    #         if layer_index < 0:
+    #             return 0, "No DRC errors found."
+
+    #         region = kdb.Region()
+            
+    #         # 1. Fetch shapes from the main cell
+    #         kdb_cell = _get_kdb_cell(component)
+    #         if kdb_cell is not None:
+    #             region += kdb.Region(kdb_cell.shapes(layer_index))
+                
+    #         # 2. Fetch shapes from references
+    #         references = getattr(component, "named_instances", None)
+    #         if isinstance(references, dict) and references:
+    #             refs_iter = references.values()
+    #         else:
+    #             refs_iter = _iter_references(component)
+
+    #         if get_ref_shapes is None:
+    #             raise RuntimeError("get_ref_shapes helper unavailable; check drc_tool import")
+
+    #         for ref in refs_iter:
+    #             try:
+    #                 region += get_ref_shapes(ref, layer_index)
+    #             except Exception:
+    #                 continue
+
+    #         errors = []
+
+    #         # 3. Perform spacing check
+    #         spacing_pairs = list(region.space_check(min_spacing / dbu).each())
+    #         for pair in spacing_pairs:
+    #             bbox = _bbox_to_tuple(pair.bbox(), dbu)
+    #             errors.append({"type": "min_spacing", "bbox": bbox})
+
+    #         # 4. Perform width check
+    #         width_pairs = list(region.width_check(min_width / dbu).each())
+    #         for pair in width_pairs:
+    #             bbox = _bbox_to_tuple(pair.bbox(), dbu)
+    #             errors.append({"type": "min_width", "bbox": bbox})
+
+    #         # 5. Format the output
+    #         errors_text = (
+    #             "\n".join([f"ERROR: {e['type']} at {e['bbox']}" for e in errors])
+    #             if errors else "No DRC errors found."
+    #         )
+            
+    #         return len(errors), errors_text
+
+    #     except Exception as exc:
+    #         return -1, f"DRC check failed: {exc}"
     def _get_drc_violations(self, component) -> tuple[int, str]:
-        """Runs DRC checks strictly using klayout.db."""
+        """Runs DRC checks strictly using klayout.db, preventing polygon merge."""
         import klayout.db as kdb
 
         if component is None:
@@ -83,7 +157,7 @@ class DRCInteraction(BaseInteraction):
                 float(box.top) * dbu,
             )
 
-        # Target DRC rules from your second snippet
+        # Target DRC rules
         min_spacing = 0.1
         min_width = 0.01
 
@@ -95,14 +169,20 @@ class DRCInteraction(BaseInteraction):
             if layer_index < 0:
                 return 0, "No DRC errors found."
 
-            region = kdb.Region()
-            
-            # 1. Fetch shapes from the main cell
+            min_spacing_dbu = int(min_spacing / dbu)
+            min_width_dbu = int(min_width / dbu)
+
+            # 核心改动：不再把所有东西塞进一个 Region，而是存成 Region 列表
+            regions = []
+
+            # 1. 获取主单元的图形（每个图形作为一个独立的 Region）
             kdb_cell = _get_kdb_cell(component)
             if kdb_cell is not None:
-                region += kdb.Region(kdb_cell.shapes(layer_index))
+                for shape in kdb_cell.shapes(layer_index).each():
+                    if shape.is_polygon() or shape.is_box() or shape.is_path():
+                        regions.append(kdb.Region(shape.polygon))
                 
-            # 2. Fetch shapes from references
+            # 2. 获取子引用的图形（每个引用作为一个独立的 Region）
             references = getattr(component, "named_instances", None)
             if isinstance(references, dict) and references:
                 refs_iter = references.values()
@@ -114,25 +194,55 @@ class DRCInteraction(BaseInteraction):
 
             for ref in refs_iter:
                 try:
-                    region += get_ref_shapes(ref, layer_index)
+                    ref_region = get_ref_shapes(ref, layer_index)
+                    if not ref_region.is_empty():
+                        regions.append(ref_region)
                 except Exception:
                     continue
 
             errors = []
 
-            # 3. Perform spacing check
-            spacing_pairs = list(region.space_check(min_spacing / dbu).each())
-            for pair in spacing_pairs:
-                bbox = _bbox_to_tuple(pair.bbox(), dbu)
-                errors.append({"type": "min_spacing", "bbox": bbox})
+            # 3. 对每个独立的 Region 进行内部检查 (线宽，以及子引用内部的间距)
+            for r in regions:
+                # 检查线宽
+                width_pairs = list(r.width_check(min_width_dbu).each())
+                for pair in width_pairs:
+                    bbox = _bbox_to_tuple(pair.bbox(), dbu)
+                    errors.append({"type": "min_width", "bbox": bbox})
+                
+                # 如果这个 Region 里有多个图形（比如一个子组件），检查它内部的间距
+                space_pairs = list(r.space_check(min_spacing_dbu).each())
+                for pair in space_pairs:
+                    bbox = _bbox_to_tuple(pair.bbox(), dbu)
+                    errors.append({"type": "min_spacing (internal)", "bbox": bbox})
 
-            # 4. Perform width check
-            width_pairs = list(region.width_check(min_width / dbu).each())
-            for pair in width_pairs:
-                bbox = _bbox_to_tuple(pair.bbox(), dbu)
-                errors.append({"type": "min_width", "bbox": bbox})
+            # 4. 跨 Region 检查（避免 Merge 问题的关键所在）
+            num_regions = len(regions)
+            for i in range(num_regions):
+                r1 = regions[i]
+                # BBox 快速排查，避免 O(N^2) 导致的卡顿
+                bbox1_expanded = r1.bbox().enlarged(min_spacing_dbu, min_spacing_dbu)
 
-            # 5. Format the output
+                for j in range(i + 1, num_regions):
+                    r2 = regions[j]
+
+                    if not bbox1_expanded.overlaps(r2.bbox()):
+                        continue  # 距离很远，跳过
+
+                    # 4.1 检查重叠 (因为 separation_check 不抓重叠，所以必须补上这个)
+                    overlap = r1 & r2
+                    if not overlap.is_empty():
+                        bbox = _bbox_to_tuple(overlap.bbox(), dbu)
+                        errors.append({"type": "overlap", "bbox": bbox})
+                        continue
+
+                    # 4.2 检查间距 (跨 Region 的 space check)
+                    sep_pairs = list(r1.separation_check(r2, min_spacing_dbu).each())
+                    for pair in sep_pairs:
+                        bbox = _bbox_to_tuple(pair.bbox(), dbu)
+                        errors.append({"type": "min_spacing (inter-region)", "bbox": bbox})
+
+            # 5. 格式化输出
             errors_text = (
                 "\n".join([f"ERROR: {e['type']} at {e['bbox']}" for e in errors])
                 if errors else "No DRC errors found."
@@ -142,7 +252,6 @@ class DRCInteraction(BaseInteraction):
 
         except Exception as exc:
             return -1, f"DRC check failed: {exc}"
-
     def _render(self, component, instance_id) -> Image.Image:
         """
         [FIXED] Uses component_to_pil_image from utils instead of component.to_png
@@ -285,7 +394,7 @@ if __name__ == "__main__":
 
             # 2. Initialize Environment
             interaction = DRCInteraction(config={})
-            instance_id = await interaction.start_interaction(clean_gds_path=gds_path)
+            instance_id = await interaction.start_interaction(clean_layout_gds_path=gds_path)
             print(f"Interaction Session Started: {instance_id}")
 
             # Verify initial state
@@ -294,12 +403,56 @@ if __name__ == "__main__":
             
             # 3. Simulate Agent Call: Move p0
             # This is the JSON string passed from the Thin Tool
+            
+            action_payload = json.dumps({
+                "tool": "op_split_polygon",
+                "args": {
+                    "polygon_name": "p0",
+                    "split_line":{
+                    "axis": "x",
+                    "value": 0}
+                }
+            })
+            
+            print(f"\n[Action] Applying Payload: {action_payload}")
+            img, feedback, errs = await interaction.execute_tool_action(instance_id, action_payload)
+            
+            print(f"Feedback: {feedback}")
             action_payload = json.dumps({
                 "tool": "op_move_polygon",
                 "args": {
-                    "polygon_name": "p0",
-                    "dx": 20.0,
-                    "dy": 5.0
+                    "polygon_name": "p0_part1",
+                    "dx": 2.0,
+                    "dy": 0.0
+                }
+            })
+            
+            print(f"\n[Action] Applying Payload: {action_payload}")
+            img, feedback, errs = await interaction.execute_tool_action(instance_id, action_payload)
+            
+            print(f"Feedback: {feedback}")
+            
+            action_payload = json.dumps({
+                "tool": "op_split_polygon",
+                "args": {
+                    "polygon_name": "p0_part1",
+                    "split_line":{
+                    "axis": "y",
+                    "value": 0}
+                }
+            })
+            
+            print(f"\n[Action] Applying Payload: {action_payload}")
+            img, feedback, errs = await interaction.execute_tool_action(instance_id, action_payload)
+            
+            print(f"Feedback: {feedback}")
+            action_payload = json.dumps({
+                "tool": "op_split_polygon",
+                "args": {
+                    "polygon_name": "p0_part2",
+                    "split_line":{
+                    "axis": "x",
+                    "value": 0}
                 }
             })
             
@@ -316,22 +469,23 @@ if __name__ == "__main__":
             if hasattr(comp, "named_instances") and "p0" in comp.named_instances:
                 target_ref = comp.named_instances["p0"]
             
-            assert target_ref is not None, "Failed to find instance 'p0' after operation"
+            #assert target_ref is not None, "Failed to find instance 'p0' after operation"
             
             # Check coordinates: Initial (0,0) -> Move (20, 5) -> Expected Center (20, 5)
             # Note: gdsfactory center property returns a numpy array
-            current_center = target_ref.center
-            print(f"New Center: {current_center}")
+            #current_center = target_ref.center
+            #print(f"New Center: {current_center}")
             
-            if np.allclose(current_center, [20.0, 5.0], atol=1e-3):
-                print(">> Physics Verification Passed: Polygon moved correctly! ✅")
-            else:
-                print(f"!! Physics Verification Failed: Expected (20, 5), got {current_center} ❌")
+            # if np.allclose(current_center, [20.0, 5.0], atol=1e-3):
+            #     print(">> Physics Verification Passed: Polygon moved correctly! ✅")
+            # else:
+            #     print(f"!! Physics Verification Failed: Expected (20, 5), got {current_center} ❌")
 
             # 5. Verify Image Generation
             if img is not None and isinstance(img, Image.Image):
                 print(f">> Rendering Verification Passed: Output image size {img.size} ✅")
-                # img.show() # Uncomment to view image if running locally
+                img.save('dog.png')
+                #img.show() # Uncomment to view image if running locally
             else:
                 print("!! Rendering Verification Failed ❌")
 

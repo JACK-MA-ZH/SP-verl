@@ -52,6 +52,11 @@ class DRCRewardManager(AbstractRewardManager):
         batch_size = data.batch.batch_size[0]
         assert batch_size % 2 == 0, "Batch size must be even for gen/fix pairs."
         
+        track_vars = {
+            "gen_n_after": [],"n_before": [], "n_after": [], "n_fix_ops": [], 
+            "r_gen": [], "r_fix": [], "final_r_gen": [], "final_r_fix": []
+        }
+        
         reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
         half_batch = batch_size // 2
         for i in range(0, half_batch):
@@ -100,6 +105,15 @@ class DRCRewardManager(AbstractRewardManager):
             if fix_valid_len > 0:
                 reward_tensor[i + half_batch, fix_valid_len - 1] = final_r_fix
 
+            track_vars["gen_n_after"].append(gen_n_after)
+            track_vars["n_before"].append(n_before)
+            track_vars["n_after"].append(n_after)
+            track_vars["n_fix_ops"].append(n_fix_ops)
+            track_vars["r_gen"].append(r_gen)
+            track_vars["r_fix"].append(r_fix)
+            track_vars["final_r_gen"].append(final_r_gen)
+            track_vars["final_r_fix"].append(final_r_fix)
+            
             # Logging for debugging
             if 1:#self.print_count < self.num_examine:
                 print("-" * 20)
@@ -110,7 +124,17 @@ class DRCRewardManager(AbstractRewardManager):
                 print(f"  Final Rewards: R_gen={final_r_gen:.2f}, R_fix={final_r_fix:.2f}")
                 self.print_count += 1
                 
-        return {"reward_tensor": reward_tensor} if return_dict else reward_tensor
+        drc_metrics = {}
+        if track_vars["n_before"]: # Ensure it's not empty
+            for key, values in track_vars.items():
+                drc_metrics[f"drc_env/{key}/mean"] = sum(values) / len(values)
+                drc_metrics[f"drc_env/{key}/max"] = max(values)
+                drc_metrics[f"drc_env/{key}/min"] = min(values)
+        
+        # Add the dynamic weights (these are scalars, so no min/max needed)
+        drc_metrics["drc_env/w_gen"] = self.w_gen
+        drc_metrics["drc_env/w_fix"] = self.w_fix        
+        return {"reward_tensor": reward_tensor, "drc_metrics": drc_metrics} if return_dict else reward_tensor
 
     def _adjust_dynamic_weights(self):
         if len(self.fix_success_history) < 50: # Wait for enough history

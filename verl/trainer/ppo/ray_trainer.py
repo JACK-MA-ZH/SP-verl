@@ -1139,7 +1139,8 @@ class RayPPOTrainer:
             reward_result = self.reward_fn(combined_batch, return_dict=True)
             combined_batch.batch["token_level_scores"] = reward_result["reward_tensor"]
             combined_batch.batch["token_level_rewards"] = reward_result["reward_tensor"]
-
+            if "drc_metrics" in reward_result:
+                combined_batch.meta_info["drc_metrics"] = reward_result["drc_metrics"]
         return combined_batch, timing_raw
     def fit(self):
         """
@@ -1339,6 +1340,9 @@ class RayPPOTrainer:
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
+                
+                if "drc_metrics" in batch.meta_info:
+                    metrics.update(batch.meta_info["drc_metrics"])
                 # Note: mismatch metrics (KL, PPL, etc.) are collected at line 1179 after advantage computation
 
                 # this is experimental and may be changed/removed in the future in favor of a general-purpose one
