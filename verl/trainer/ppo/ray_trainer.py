@@ -36,6 +36,8 @@ from omegaconf import OmegaConf, open_dict
 from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
+import time
+
 
 
 from PIL import Image
@@ -319,7 +321,8 @@ class RayPPOTrainer:
         self.config = config
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
-
+        self.curriculum_ratio = 0.0
+        
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
 
@@ -1002,21 +1005,52 @@ class RayPPOTrainer:
 
         # 使用 trainer 自带的 tokenizer
         tokenizer = self.tokenizer
+        
+        n_rollouts = self.config.actor_rollout_ref.rollout.n
+        B = len(gen_batch_output) // n_rollouts 
         errors_list = gen_batch_output.non_tensor_batch.get("drc_errors_after", [0] * len(gen_batch_output))
 
-        # 2. 找到错误数量最多的那个索引 (如果有多个最大值，默认返回第一个)
-        best_idx = int(np.argmax(errors_list))
-
-        print(f"\n[Trainer] Selected the hardest generation: {errors_list[best_idx]} errors (Index: {best_idx})")
-
-        # 3. 使用切片 [best_idx : best_idx + 1] 提取这条最难的数据
-        selected_gen_batch = gen_batch_output[best_idx : best_idx + 1]
-        # idx = random.randint(0, len(gen_batch_output) - 1)
-        # selected_gen_batch = gen_batch_output[idx : idx + 1]
+        selected_indices = []
         
-        selected_gen_batch=selected_gen_batch.repeat(
-                    repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
-                )
+        for j in range(B):
+            group_indices = [j + i * B for i in range(n_rollouts)]
+            group_errors = [(errors_list[idx], idx) for idx in group_indices]
+            
+            # 过滤掉 0 错误的版图
+            valid_errors = [x for x in group_errors if x[0] > 0]
+            if not valid_errors:
+                valid_errors = group_errors # 兜底
+                
+            valid_errors.sort(key=lambda x: x[0])
+            
+            # [关键] 根据 Fixer 真实的实力（curriculum_ratio）来选难度
+            target_pos = int(self.curriculum_ratio * (len(valid_errors) - 1))
+            selected_error_count, selected_idx = valid_errors[target_pos]
+            
+            print(f"[Curriculum] Prompt {j}: Difficulty {self.curriculum_ratio:.2f} -> Selected {selected_error_count} errors (Pos {target_pos+1}/{len(valid_errors)})")
+            
+            selected_indices.append(selected_idx)
+
+        # 提取并复制 B 条数据给 Fixer
+        selected_gen_batch = gen_batch_output[selected_indices]
+        selected_gen_batch = selected_gen_batch.repeat(repeat_times=n_rollouts, interleave=True)
+        
+        
+        # errors_list = gen_batch_output.non_tensor_batch.get("drc_errors_after", [0] * len(gen_batch_output))
+
+        # # 2. 找到错误数量最多的那个索引 (如果有多个最大值，默认返回第一个)
+        # best_idx = int(np.argmax(errors_list))
+
+        # print(f"\n[Trainer] Selected the hardest generation: {errors_list[best_idx]} errors (Index: {best_idx})")
+
+        # # 3. 使用切片 [best_idx : best_idx + 1] 提取这条最难的数据
+        # selected_gen_batch = gen_batch_output[best_idx : best_idx + 1]
+        # # idx = random.randint(0, len(gen_batch_output) - 1)
+        # # selected_gen_batch = gen_batch_output[idx : idx + 1]
+        
+        # selected_gen_batch=selected_gen_batch.repeat(
+        #             repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
+        #         )
         for i in range(len(selected_gen_batch)):
             
             uid = selected_gen_batch.non_tensor_batch["uid"][i]
@@ -1032,7 +1066,9 @@ class RayPPOTrainer:
             f"Do NOT use any other names. The DRC rule is: spacing should be larger than 1. \n\n"
             f"Here is the Current DRC Status you need to resolve:\n"
             f"{drc_status_text}\n\n"
-            f"Think step by step and use op_move_polygon to resolve the spacing violations.")
+            f"You MUST think step by step before taking any action. "
+            f"Enclose your entire reasoning process within <think> and </think> tags. "
+            f"After your reasoning, output the op_move_polygon command.")
             
             # f"The layout may has DRC errors. Your goal is to completely clean the layout.\nAvailable polygons: {available_polygons}.\nYou can use the 'op_move_polygon' tool iteratively. After each move, check the 'Current DRC Status'. Do not stop until the status explicitly says 'No DRC errors found'. Terminate the session only when it is 100% clean."
             msgs = [{
@@ -1071,7 +1107,9 @@ class RayPPOTrainer:
                 "clean_layout_gds_path": generated_gds_path
             })
             unique_suffix = uuid.uuid4().hex[:8]
-            fixer_uids.append(f"{unique_suffix}_fix")
+            # 获取当前时间字符串
+            time_str = time.strftime("%Y_%m_%d__%H_%M_%S", time.localtime())
+            fixer_uids.append(f"{uid}_{unique_suffix}_{time_str}_fix")
             fixer_raw_prompts.append(msgs)
             fixer_extra_info.append({})
 
@@ -1108,7 +1146,25 @@ class RayPPOTrainer:
             else:
                 fix_batch_output = self.async_rollout_manager.generate_sequences(fixer_batch)
             
+        fix_errors_after = fix_batch_output.non_tensor_batch.get("drc_errors_after", [])
+        
+        if len(fix_errors_after) > 0:
+            # 定义“成功”：Fixer 修完之后，错误数为 0
+            success_count = sum(1 for err in fix_errors_after if err == 0)
+            success_rate = success_count / len(fix_errors_after)
             
+            # 动态博弈逻辑：
+            # 如果 Fixer 修复率极高 (比如 > 70%)，说明当前难度太简单，加大 Generator 错误数量！
+            if success_rate > 0.7:
+                self.curriculum_ratio = min(1.0, self.curriculum_ratio + 0.1)
+                
+            # 如果 Fixer 被打爆了 (修复率 < 30%)，说明错误太多修不过来，降低难度！
+            elif success_rate < 0.3:
+                self.curriculum_ratio = max(0.0, self.curriculum_ratio - 0.1)
+                
+            print(f"\n[Dynamic Curriculum] Fixer Success Rate: {success_rate*100:.1f}% | Next Difficulty Ratio adjusted to: {self.curriculum_ratio:.2f}\n")
+            
+                
         fix_metrics = fix_batch_output.non_tensor_batch.get("metrics", [])
 
         # --- STAGE 4: Combine & Reward ---

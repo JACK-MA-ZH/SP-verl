@@ -5,6 +5,7 @@ import os
 from typing import Any
 from uuid import uuid4
 import copy
+import re
 from verl.experimental.agent_loop.agent_loop import AgentLoopOutput, register
 from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop,AgentData
 from verl.interactions.drc_interaction import DRCInteraction
@@ -48,6 +49,7 @@ class DRCAgentData(AgentData):
         self.drc_errors_at_end = 0
         self.fix_ops_count = 0
         self.move_penalty=0
+        self.format_score = 0.0
         #self.assistant_turns = 0
 
 
@@ -127,6 +129,21 @@ class DRCAgentLoop(ToolAgentLoop):
                 
                 state = await self._handle_generating_state(agent_data, sampling_params, ignore_termination=True)
                 
+                
+                # ==========================================
+                last_msg = agent_data.messages[-1]
+                if last_msg["role"] == "assistant":
+                    content = last_msg.get("content", "")
+                    # 处理 content 可能是 list 的情况
+                    text_content = "".join([c.get("text", "") for c in content if c.get("type") == "text"]) if isinstance(content, list) else str(content)
+                    
+                    # 校验是否包含 <think> 标签
+                    if re.search(r"<think>.*?</think>", text_content, re.DOTALL):
+                        agent_data.format_score += 1  # 乖乖思考了，加分 (W_FORMAT)
+                    else:
+                        agent_data.format_score -= 0  # 直接动手不思考，扣分！(PENALTY_NO_THINK)
+
+                # ==========================================
                 # ==========================================
                 # 2. 打印 LLM 的输出 (最新追加的 assistant 消息)
                 # ==========================================
@@ -189,7 +206,8 @@ class DRCAgentLoop(ToolAgentLoop):
             "drc_errors_after": agent_data.drc_errors_at_end,
             "num_fix_ops": agent_data.fix_ops_count,
             "final_drc_message": last_drc_message,
-            "move_penalty": agent_data.move_penalty
+            "move_penalty": agent_data.move_penalty,
+            "format_score": agent_data.format_score
         }
         metrics_to_return={}
         

@@ -7,7 +7,7 @@ from typing import Any
 from tensordict import TensorDict
 import numpy as np
 import torch
-
+import re
 from verl import DataProto
 from verl.workers.reward_manager.abstract import AbstractRewardManager
 from verl.workers.reward_manager.registry import register
@@ -34,7 +34,8 @@ class DRCRewardManager(AbstractRewardManager):
         self.WC_CHALLENGE_WEIGHT = 0.2
         self.WR_REDUCTION_WEIGHT = 5.0
         self.WP_PERTURBATION_PENALTY = 0.1
-        
+        self.W_FORMAT = 3 
+        self.PENALTY_NO_THINK = -3.0
         # State for dynamic weighting
         self.fix_success_history = deque(maxlen=100)
         self.w_gen = 1.0
@@ -66,15 +67,18 @@ class DRCRewardManager(AbstractRewardManager):
             
             # Extract metrics from trajectories
             # These must be populated by the agent loop and trainer
+            gen_format_score = gen_traj.non_tensor_batch.get("format_score", 0.0)
+            fix_format_score = fix_traj.non_tensor_batch.get("format_score", 0.0)
+        
             gen_n_after=gen_traj.non_tensor_batch.get("drc_errors_after", 0)
             n_before = fix_traj.non_tensor_batch.get("drc_errors_before", 0)
             n_after = fix_traj.non_tensor_batch.get("drc_errors_after", 0)
             n_fix_ops = fix_traj.non_tensor_batch.get("num_fix_ops", 0)
             move_penalty = fix_traj.non_tensor_batch.get("move_penalty", 0)
             # --- Calculate R_gen ---
-            r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
-            r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
-            r_gen = r_target_hit #+ r_challenge
+            r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after #if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
+           # r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
+            r_gen = r_target_hit + gen_format_score#+ r_challenge
             
             # --- Calculate R_fix ---
             # if n_after == 0 and n_before!=0:
@@ -84,7 +88,7 @@ class DRCRewardManager(AbstractRewardManager):
             r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
             move_penalty=min(200,move_penalty)
             r_perturbation = -self.WP_PERTURBATION_PENALTY * (n_fix_ops+move_penalty)
-            r_fix = r_drc_clean + r_perturbation
+            r_fix = r_drc_clean + r_perturbation + fix_format_score
             
             # --- Apply dynamic weights ---
             final_r_gen = self.w_gen * r_gen
@@ -144,9 +148,9 @@ class DRCRewardManager(AbstractRewardManager):
         
         if fix_success_rate > 0.95: # Task is too easy
             self.w_gen = min(2.0, self.w_gen * 1.1)
-            self.w_fix = max(0.5, self.w_fix * 0.9)
+            self.w_fix = max(0.1, self.w_fix * 0.9)
         elif fix_success_rate < 0.50: # Task is too hard
-            self.w_gen = max(0.5, self.w_gen * 0.9)
+            self.w_gen = max(0.1, self.w_gen * 0.9)
             self.w_fix = min(2.0, self.w_fix * 1.1)
 
 if __name__ == "__main__":

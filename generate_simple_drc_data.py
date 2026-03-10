@@ -62,13 +62,13 @@ def create_square_component(name: str, size: float = 10.0) -> gf.Component:
     # 但根据之前的架构，Tool操作的是 Reference。
     # 所以标准做法是：
     top = gf.Component(f"{name}_top")
-    ref = top.add_ref(c, name="square_1") # 实例名为 square_1
+    ref = top.add_ref(c, name="p1") # 实例名为 p1
     ref.center = (0, 0)
     
     # 确保有 named_instances 属性 (兼容我们的 Tool)
     if not hasattr(top, "named_instances"):
         top.named_instances = {}
-    top.named_instances["square_1"] = ref
+    top.named_instances["p1"] = ref
     
     return top
 
@@ -110,7 +110,10 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
         # 这是 Generator Agent 看到的任务描述
         prompt = (
             "<image>\n"  # <--- 注意这里增加了 <image>
-            "You have a clean layout. Your ultimate goal is to maximize the number of distinct DRC spacing violations.\nAvailable polygons: square_1.\nYou can use the 'op_split_polygon' tool as many times as you need. Keep splitting until you think you have created the maximum possible chaos. Terminate the session only when you are satisfied with the destruction."
+            "You have a clean layout. Your ultimate goal is to maximize the number of distinct DRC spacing violations.\nAvailable polygons: p1.\nYou can use the 'op_split_polygon' tool as many times as you need. Keep splitting until you think you have created the maximum possible chaos. Terminate the session only when you are satisfied with the destruction."
+            f"You MUST think step by step before taking any action. "
+            f"Enclose your entire reasoning process within <think> and </think> tags. "
+            f"After your reasoning, output the op_split_polygon command."
         )
         
         # 5. 记录元数据 (对应 DRCDataset 的字段)

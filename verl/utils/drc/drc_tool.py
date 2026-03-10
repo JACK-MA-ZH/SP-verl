@@ -598,25 +598,9 @@ class SplitPolygonTool(DRCBaseTool):
                     "value": {"type": "number", "description": "直线value"},
                 },
                 "required": ["axis", "value"],
-                "description": "???????",
+                "description": "the split line",
             },
         },
-                
-            # "split_line_bbox": {
-            #     "type": "array",
-            #     "items": {"type": "number"},
-            #     "minItems": 4,
-            #     "maxItems": 4,
-            #     "description": "切割矩形的边界框 xmin, ymin, xmax, ymax (um)。",
-            # },
-            # "layer": {
-            #     "type": "array",
-            #     "items": {"type": "number"},
-            #     "minItems": 2,
-            #     "maxItems": 2,
-            #     "description": "GDS Layer [layer, purpose] 列表 (例如 [1, 0])。",
-            # },
-        #},
         "required": ["polygon_name", "split_line"],
     }
     def _build_half_plane_masks(
@@ -700,23 +684,23 @@ class SplitPolygonTool(DRCBaseTool):
         new_refs: List[str] = []
 
         if not first_region.is_empty():
-            first_component = gf.Component()#name=f"{polygon_name}_part1"
+            first_component = gf.Component()#name=f"{polygon_name}_1"
             first_cell = _get_kdb_cell(first_component)
             first_cell.shapes(layer_index).insert(first_region)
-            ref_first = component.add_ref(first_component, name=f"{polygon_name}_part1")
+            ref_first = component.add_ref(first_component, name=f"{polygon_name}_1")
             _register_reference_name(component, ref_first.name, ref_first)
             new_refs.append(ref_first.name)
-            reference = self._get_reference(component, f"{polygon_name}_part1")
+            reference = self._get_reference(component, f"{polygon_name}_1")
             reference.dmove((-0.01, -0.01))
 
         if not second_region.is_empty():
-            second_component = gf.Component()#name=f"{polygon_name}_part2"
+            second_component = gf.Component()#name=f"{polygon_name}_2"
             second_cell = _get_kdb_cell(second_component)
             second_cell.shapes(layer_index).insert(second_region)
-            ref_second = component.add_ref(second_component, name=f"{polygon_name}_part2")
+            ref_second = component.add_ref(second_component, name=f"{polygon_name}_2")
             _register_reference_name(component, ref_second.name, ref_second)
             new_refs.append(ref_second.name)
-            reference = self._get_reference(component, f"{polygon_name}_part2")
+            reference = self._get_reference(component, f"{polygon_name}_2")
             reference.dmove((0.01, 0.01))
 
         return {
@@ -751,11 +735,11 @@ class SplitPolygonTool(DRCBaseTool):
 
     #     new_refs: List[str] = []
     #     if inside.get_polygons():
-    #         ref_inside = component.add_ref(inside, name=f"{polygon_name}_part1")
+    #         ref_inside = component.add_ref(inside, name=f"{polygon_name}_1")
     #         _register_reference_name(component, ref_inside.name, ref_inside)
     #         new_refs.append(ref_inside.name)
     #     if outside.get_polygons():
-    #         ref_outside = component.add_ref(outside, name=f"{polygon_name}_part2")
+    #         ref_outside = component.add_ref(outside, name=f"{polygon_name}_2")
     #         _register_reference_name(component, ref_outside.name, ref_outside)
     #         new_refs.append(ref_outside.name)
 
