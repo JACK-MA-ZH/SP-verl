@@ -158,8 +158,8 @@ class DRCInteraction(BaseInteraction):
             )
 
         # Target DRC rules
-        min_spacing = 0.1
-        min_width = 0.01
+        min_spacing = 1
+        min_width = 0.0001
 
         try:
             layout = component.kcl.layout

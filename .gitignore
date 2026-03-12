@@ -8,7 +8,7 @@
 **/*.tar.gz
 **/playground
 **/wandb
-
+drc_data_square/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

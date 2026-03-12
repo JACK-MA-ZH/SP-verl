@@ -691,7 +691,7 @@ class SplitPolygonTool(DRCBaseTool):
             _register_reference_name(component, ref_first.name, ref_first)
             new_refs.append(ref_first.name)
             reference = self._get_reference(component, f"{polygon_name}_1")
-            reference.dmove((-0.01, -0.01))
+            #reference.dmove((-0.01, -0.01))
 
         if not second_region.is_empty():
             second_component = gf.Component()#name=f"{polygon_name}_2"
@@ -701,7 +701,7 @@ class SplitPolygonTool(DRCBaseTool):
             _register_reference_name(component, ref_second.name, ref_second)
             new_refs.append(ref_second.name)
             reference = self._get_reference(component, f"{polygon_name}_2")
-            reference.dmove((0.01, 0.01))
+            #reference.dmove((0.01, 0.01))
 
         return {
             "content": (

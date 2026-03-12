@@ -127,7 +127,7 @@ class DRCAgentLoop(ToolAgentLoop):
                 with open('llm_output.log', 'a') as f:
                     f.write(f"{'='*60}\n")
                 
-                state = await self._handle_generating_state(agent_data, sampling_params, ignore_termination=True)
+                state = await self._handle_generating_state(agent_data, sampling_params)#ignore_termination=True
                 
                 
                 # ==========================================
@@ -155,6 +155,15 @@ class DRCAgentLoop(ToolAgentLoop):
             elif state == AgentState.PROCESSING_TOOLS:
                 state = await self._handle_drc_tool_processing(agent_data)
                 turn_count = turn_count+1
+                # [新增] 完美修复，提前终止判定 (Early Stopping)
+                # ==========================================
+                if agent_data.phase == "fix":
+                    # 从交互环境的字典中实时读取最新的 drc_errors
+                    current_errors = agent_data.interaction._instance_dict[request_id].get("drc_errors", -1)
+                    if current_errors == 0:
+                        logger.info(f"[DRCAgentLoop] UID: {uid} | Turn {turn_count}: DRC errors reached 0! Perfect fix. Terminating early.")
+                        state = AgentState.TERMINATED  # 直接切断循环
+                # ==========================================
             elif state == AgentState.INTERACTING:
                 logger.info(f"[DRCAgentLoop] Model output text without tool call, terminating episode.")
                 state = AgentState.TERMINATED

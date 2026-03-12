@@ -113,6 +113,10 @@ def generate_dataset(output_dir: str, num_samples: int, split: str):
             "You have a clean layout. Your ultimate goal is to maximize the number of distinct DRC spacing violations.\nAvailable polygons: p1.\nYou can use the 'op_split_polygon' tool as many times as you need. Keep splitting until you think you have created the maximum possible chaos. Terminate the session only when you are satisfied with the destruction."
             f"You MUST think step by step before taking any action. "
             f"Enclose your entire reasoning process within <think> and </think> tags. "
+            f"Inside the <think> tags, you must explicitly write out:\n"
+            f"1. Analyze the current gds.\n"
+            f"2. Identify the coordinates and names of the polygons involved.\n"
+            f"3. Decide the exact 'axis' and 'value' for your next operation.\n"
             f"After your reasoning, output the op_split_polygon command."
         )
         

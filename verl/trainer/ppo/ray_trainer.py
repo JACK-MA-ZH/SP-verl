@@ -1068,6 +1068,10 @@ class RayPPOTrainer:
             f"{drc_status_text}\n\n"
             f"You MUST think step by step before taking any action. "
             f"Enclose your entire reasoning process within <think> and </think> tags. "
+            f"Inside the <think> tags, you must explicitly write out:\n"
+            f"1. Analyze the current DRC Status.\n"
+            f"2. Identify the coordinates and names of the polygons involved.\n"
+            f"3. Decide the 'dx' and 'dy' value for your next operation.\n"
             f"After your reasoning, output the op_move_polygon command.")
             
             # f"The layout may has DRC errors. Your goal is to completely clean the layout.\nAvailable polygons: {available_polygons}.\nYou can use the 'op_move_polygon' tool iteratively. After each move, check the 'Current DRC Status'. Do not stop until the status explicitly says 'No DRC errors found'. Terminate the session only when it is 100% clean."
