@@ -1,6 +1,7 @@
 # recipe/drc/main.py
 import sys
 import os
+os.environ["WANDB_MODE"] = "offline"
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch.multiprocessing as mp

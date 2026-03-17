@@ -52,7 +52,24 @@ class DRCAgentData(AgentData):
         self.format_score = 0.0
         #self.assistant_turns = 0
 
-
+def get_format_reward(text, available_polygons):
+            score = 0.0
+            think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
+            
+            if think_match:
+                score += 0.5 # 基础格式分
+                think_content = think_match.group(1)
+                
+                # 检查思考内容里是否提到了多边形的名字（证明它在观察环境）
+                has_polygon = any(p in think_content for p in available_polygons)
+                if has_polygon:
+                    score += 0.5 # 提到了关键实体，额外加分！
+                else:
+                    score -= 0.5 # 胡言乱语没提到多边形，扣分
+            else:
+                score -= 2.0 # 没写标签，重罚
+                
+            return score
 
 class DRCAgentLoop(ToolAgentLoop):
     """
@@ -62,6 +79,8 @@ class DRCAgentLoop(ToolAgentLoop):
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         
         phase = kwargs.get("phase", "gen")
+        
+        strict_regex = kwargs.get("regex")
         #raise TypeError("drc going")
         # Initial prompt for the generator
         # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
@@ -127,7 +146,33 @@ class DRCAgentLoop(ToolAgentLoop):
                 with open('llm_output.log', 'a') as f:
                     f.write(f"{'='*60}\n")
                 
-                state = await self._handle_generating_state(agent_data, sampling_params)#ignore_termination=True
+                current_sampling_params = copy.deepcopy(sampling_params)
+                # current_state = agent_data.interaction._instance_dict.get(request_id, {})
+                # component = current_state.get("component")
+                # available_polygons = [inst.name for inst in component.insts]
+                # if available_polygons:
+                #     poly_pattern = "|".join(map(re.escape, available_polygons))   
+                # if agent_data.phase == "fix":
+                #     current_sampling_params["regex"] = (
+                #                 r"<think>[\s\S]*</think>\n?"
+                #                 r"<tool_call>\n?"
+                #                 r'\{"name": "op_move_polygon", "arguments": '
+                #                 r'\{"polygon_name": "(' + poly_pattern + r')", '
+                #                 r'"dx": -?[0-9]+(\.[0-9]+)?, "dy": -?[0-9]+(\.[0-9]+)?\}\}'
+                #                 r'\n?</tool_call>'
+                #             )
+                # else:
+                #     current_sampling_params["regex"] = (
+                #                 r"<think>[\s\S]*</think>\n?"
+                #                 r"<tool_call>\n?"
+                #                 r'\{"name": "op_split_polygon", "arguments": '
+                #                 r'\{"polygon_name": "(' + poly_pattern + r')", '
+                #                 r'"axis": "[xy]", "value": -?[0-9]+(\.[0-9]+)?\}\}'
+                #                 r'\n?</tool_call>'
+                #             )
+                    
+                    
+                state = await self._handle_generating_state(agent_data, current_sampling_params)#ignore_termination=True
                 
                 
                 # ==========================================
@@ -137,11 +182,22 @@ class DRCAgentLoop(ToolAgentLoop):
                     # 处理 content 可能是 list 的情况
                     text_content = "".join([c.get("text", "") for c in content if c.get("type") == "text"]) if isinstance(content, list) else str(content)
                     
-                    # 校验是否包含 <think> 标签
-                    if re.search(r"<think>.*?</think>", text_content, re.DOTALL):
-                        agent_data.format_score += 1  # 乖乖思考了，加分 (W_FORMAT)
+                    # 1. 从当前交互环境中实时获取最新的 polygon 列表
+                    current_state = agent_data.interaction._instance_dict.get(request_id, {})
+                    component = current_state.get("component")
+                    if component is not None:
+                        available_polygons = [inst.name for inst in component.insts]
                     else:
-                        agent_data.format_score -= 0  # 直接动手不思考，扣分！(PENALTY_NO_THINK)
+                        available_polygons = [] # 兜底防错
+                        
+                    # 2. 调用外置函数进行打分
+                    turn_format_score = get_format_reward(text_content, available_polygons)
+                    agent_data.format_score += turn_format_score
+                    # # 校验是否包含 <think> 标签
+                    # if re.search(r"<think>.*?</think>", text_content, re.DOTALL):
+                    #     agent_data.format_score += 1  # 乖乖思考了，加分 (W_FORMAT)
+                    # else:
+                    #     agent_data.format_score -= 0  # 直接动手不思考，扣分！(PENALTY_NO_THINK)
 
                 # ==========================================
                 # ==========================================
@@ -268,7 +324,7 @@ class DRCAgentLoop(ToolAgentLoop):
         # Update prompt with tool responses and the new image
         raw_tool_response_text = self.processor.apply_chat_template(
             new_messages,          
-            tools=agent_data.active_tool_schemas,#self.tool_schemas,      # 注意：必须再次带上工具 schema！, 
+            #tools=agent_data.active_tool_schemas,#self.tool_schemas,      # 注意：必须再次带上工具 schema！, 
             add_generation_prompt=True, 
             tokenize=False, 
             **self.apply_chat_template_kwargs

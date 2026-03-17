@@ -45,6 +45,17 @@ class DRCInteraction(BaseInteraction):
             # "op_offset_polygon": OffsetPolygonTool(),
             "op_split_polygon": SplitPolygonTool(),
         }
+    def get_available_polygons(self, component) -> str:
+        if component is None:
+            return ""
+        
+        # 从 component 中提取所有实例（多边形）的名字
+        # gdsfactory 中 component.insts 通常是一个字典，key 就是名字
+        
+        polygons = [inst.name for inst in component.insts]
+        
+            
+        return str(polygons)
     def get_schematic(self, component) -> str:
         if component is None:
             return "{}"
@@ -325,6 +336,7 @@ class DRCInteraction(BaseInteraction):
 
         except Exception as e:
             #traceback.print_exc()
+            state["move_penalty"] += 10
             logger.error(f"Error executing tool: {e}")#{tool_name}
             action_feedback = f"Tool execution failed: {e}"
 
@@ -338,7 +350,7 @@ class DRCInteraction(BaseInteraction):
         state["image"] = new_image
         state["drc_errors"] = num_errors
         state["drc_message"] = drc_status
-        component_schematic=self.get_schematic(component)
+        component_schematic=self.get_available_polygons(component)
         full_feedback = f"Current Schematic: {component_schematic}\nAction Result: {action_feedback}\nCurrent DRC Status:\n{drc_status}"
 
         return new_image, full_feedback, num_errors

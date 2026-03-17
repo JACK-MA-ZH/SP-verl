@@ -293,7 +293,13 @@ class SGLangRollout(BaseRollout):
             f"{self._tool_call_parser_type}, sgl_tools: {self._sgl_tools}, function_call_parser: "
             f"{self._function_call_parser}"
         )
-
+        # with open("/tmp/sglang_debug.log", "a") as f:
+        #     f.write(f">>> Tools initialized! Schemas: {self._tool_schemas}\n")
+        logger.warning(
+            f"tool_schemas: {self._tool_schemas}, tool_map: {self._tool_map}, tool_call_parser_type: "
+            f"{self._tool_call_parser_type}, sgl_tools: {self._sgl_tools}, function_call_parser: "
+            f"{self._function_call_parser}"
+        )
         self._init_distributed_env(device_mesh_cpu=None, **kwargs)
 
         self._verify_config(model_hf_config=model_hf_config)

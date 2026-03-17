@@ -479,6 +479,7 @@ class MovePolygonTool(DRCBaseTool):
 
     name = "op_move_polygon"
     description = "通过给定的增量 (dx, dy) 移动布局中的指定“多边形”（实例）。"
+    strict = True
     parameters = {
         "type": "object",
         "properties": {
@@ -583,24 +584,18 @@ class SplitPolygonTool(DRCBaseTool):
 
     name = "op_split_polygon"
     description = "使用一个无限长直线(x=value 或 y=value) 来分割一个多边形"
+    strict = True
     parameters = {
         "type": "object",
         "properties": {
             "polygon_name": {"type": "string", "description": "要分割的‘多边形’（实例）的名称。"},
-            "split_line": {
-                "type": "object",
-                "properties": {
-                    "axis": {
-                        "type": "string",
-                        "enum": ["x", "y"],
-                        "description": "决定分割直线是 x=value 还是 y=value?",
-                    },
-                    "value": {"type": "number", "description": "直线value"},
+            "axis": {
+                "type": "string",
+                "enum": ["x", "y"],
+                "description": "决定分割直线是 x=value 还是 y=value?",
                 },
-                "required": ["axis", "value"],
-                "description": "the split line",
-            },
-        },
+            "value": {"type": "number", "description": "直线value"},
+                },
         "required": ["polygon_name", "split_line"],
     }
     def _build_half_plane_masks(
@@ -652,12 +647,12 @@ class SplitPolygonTool(DRCBaseTool):
 
     def _execute(self, args: Dict[str, Any], component: component) -> Dict[str, Any] | None:
         polygon_name = args["polygon_name"]
-        split_line = args["split_line"]
-        axis = split_line.get("axis")
+        #split_line = args["split_line"]
+        axis = args["axis"]
         if axis not in {"x", "y"}:
             raise ValueError("split_line.axis must be either 'x' or 'y'.")
         try:
-            value = float(split_line["value"])
+            value = float(args["value"])
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError("split_line.value must be a valid number.") from exc
 

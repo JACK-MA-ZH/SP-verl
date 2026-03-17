@@ -190,8 +190,10 @@ class RLHFDataset(Dataset):
                         # pass tool schemas if available so the processor can format prompts
                         apply_kwargs = dict(**self.apply_chat_template_kwargs)
                         if self.tool_schemas is not None:
-                            apply_kwargs["tools"] = self.tool_schemas
-
+                            gen_tools = [t for t in self.tool_schemas if t["function"]["name"] == "op_split_polygon"]
+                            apply_kwargs["tools"] = gen_tools
+                            #apply_kwargs["tools"] = self.tool_schemas
+                        
                         raw_prompt = self.processor.apply_chat_template(
                             messages, add_generation_prompt=True, tokenize=False, **apply_kwargs
                         )
@@ -297,9 +299,14 @@ class RLHFDataset(Dataset):
 
         if self.processor is not None:
             from verl.utils.dataset.vision_utils import process_image, process_video
-
+            apply_kwargs = dict(**self.apply_chat_template_kwargs)
+            if self.tool_schemas is not None:
+                # 只允许 split 工具进入 Gen 阶段的 prompt
+                gen_tools = [t for t in self.tool_schemas if t["function"]["name"] == "op_split_polygon"]
+                apply_kwargs["tools"] = gen_tools
+                
             raw_prompt = self.processor.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False, **self.apply_chat_template_kwargs
+                messages, add_generation_prompt=True, tokenize=False, **apply_kwargs
             )
             multi_modal_data = {}
 

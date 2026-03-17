@@ -37,7 +37,7 @@ from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 import time
-
+import copy
 
 
 from PIL import Image
@@ -997,6 +997,7 @@ class RayPPOTrainer:
         fixer_input_ids = []
         fixer_attention_masks = []
         fixer_uids = []
+        regex=[]
         fixer_position_ids = [] # <--- [FIX 1] 新增列表
         fixer_mm_data = []
         fixer_interaction_kwargs = [] # [NEW] 专门存放 clean_gds_path
@@ -1084,7 +1085,22 @@ class RayPPOTrainer:
             }]
             
             # 2. Tokenize
-            prompt_str = self.processor.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+           
+            all_tools = self.train_dataset.tool_schemas
+            # 提取 Fix 专用的 Tool Schema
+            fix_tools = [t for t in all_tools if t["function"]["name"] == "op_move_polygon"]
+            # ==========================================
+            # 必须使用深拷贝，防止污染全局 schema
+            dynamic_fix_tools = copy.deepcopy(fix_tools)
+            
+            # 找到 polygon_name 并注入 enum
+            if dynamic_fix_tools and available_polygons:
+                properties = dynamic_fix_tools[0]["function"]["parameters"]["properties"]
+                if "polygon_name" in properties:
+                    properties["polygon_name"]["enum"] = available_polygons
+            # ==========================================
+            
+            prompt_str = self.processor.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,tools=dynamic_fix_tools)
             # 传入 text 和 images，算出真实的、包含图片长度的 enc
             enc = self.processor(text=[prompt_str], images=[real_img], return_tensors='pt')
             
@@ -1113,7 +1129,7 @@ class RayPPOTrainer:
             unique_suffix = uuid.uuid4().hex[:8]
             # 获取当前时间字符串
             time_str = time.strftime("%Y_%m_%d__%H_%M_%S", time.localtime())
-            fixer_uids.append(f"{uid}_{unique_suffix}_{time_str}_fix")
+            fixer_uids.append(f"fix_{self.global_steps}_{uid}_{unique_suffix}")
             fixer_raw_prompts.append(msgs)
             fixer_extra_info.append({})
 

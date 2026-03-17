@@ -7,6 +7,7 @@ tools:
       function:
         name: "op_move_polygon"
         description: "通过给定的增量 (dx, dy) 移动布局中的指定“多边形”（实例）。"
+        strict: True
         parameters:
           type: "object"
           properties:
@@ -29,22 +30,18 @@ tools:
       function:
         name: "op_split_polygon"
         description: "使用一个无限长直线(x=value 或 y=value) 来分割一个多边形"
+        strict: True
         parameters:
           type: "object"
           properties:
             polygon_name:
               type: "string"
               description: "要分割的‘多边形’（实例）的名称。"
-            split_line:
-              type: "object"
-              description: "定义用于分割多边形的直线参数"
-              properties:
-                axis:
-                  type: "string"
-                  enum: ["x", "y"]
-                  description: "决定分割直线是 x=value 还是 y=value"
-                value:
-                  type: "number"
-                  description: "直线的具体数值"
-              required: ["axis", "value"]
-          required: ["polygon_name", "split_line"]
+              axis:
+                type: "string"
+                enum: ["x", "y"]
+                description: "决定分割直线是 x=value 还是 y=value"
+              value:
+                type: "number"
+                description: "直线的具体数值"
+          required: ["polygon_name", "axis","value"]

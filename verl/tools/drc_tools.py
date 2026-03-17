@@ -19,6 +19,7 @@ class MovePolygonTool(BaseTool):
             "function": {
                 "name": "op_move_polygon",
                 "description": "Moves a specified polygon (instance) by a given delta (dx, dy).",
+                "strict": True,
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -92,31 +93,20 @@ class SplitPolygonTool(BaseTool):
             "function": {
                 "name": "op_split_polygon",
                 "description": "use an infinite straight line (x=value or y=value) to split a polygon.",
+                "strict": True,
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "polygon_name": {"type": "string", "description": "Name of the polygon/instance to split."},
-                        "split_line": {
-                            "type": "object",
-                            "properties": {
-                                "axis": {
+                        
+                        "axis": {
                                     "type": "string",
                                     "enum": ["x", "y"],
                                     "description": "decide the line is x=value or y=value?",
                                 },
-                                "value": {"type": "number", "description": "line's value"},
+                        "value": {"type": "number", "description": "line's value"},
                             },
-                            "required": ["axis", "value"],
-                            "description": "define the axis and line'svalue",
-                        },
-                        # "layer": {
-                        #     "type": "array",
-                        #     "items": {"type": "number"},
-                        #     "minItems": 2, "maxItems": 2,
-                        #     "description": "GDS Layer [layer, purpose], e.g., [1, 0]."
-                        # },
-                    },
-                    "required": ["polygon_name", "split_line"],
+                    "required": ["polygon_name", "axis","value"],
                 },
             }
         })

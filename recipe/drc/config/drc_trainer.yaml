@@ -75,7 +75,7 @@ actor_rollout_ref:
   # --- Rollout 配置 (vLLM / SGLang) ---
   rollout:
     name: sglang
-    gpu_memory_utilization: 0.4  # 留一半显存给 Training Actor
+    gpu_memory_utilization: 0.5  # 留一半显存给 Training Actor
     tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
     mode: async
     # [关键] GRPO 需要多次采样来计算 Baseline
@@ -94,7 +94,7 @@ actor_rollout_ref:
       max_assistant_turns: 5
       tool_config_path: verl/tools/config/drc_tools.yaml
       interaction_config_path: verl/interactions/config/drc_interaction.yaml
-      # format: qwen-vl
+      format: hermes
     # tool_kwargs:
     #   # 这里的路径必须指向上面那个符合标准格式的 YAML
     #   tools_config_file: verl/tools/config/drc_tools.yaml
