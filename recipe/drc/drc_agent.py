@@ -50,6 +50,7 @@ class DRCAgentData(AgentData):
         self.fix_ops_count = 0
         self.move_penalty=0
         self.format_score = 0.0
+        self.last_format_score = 0.0
         #self.assistant_turns = 0
 
 def get_format_reward(text, available_polygons):
@@ -86,6 +87,9 @@ class DRCAgentLoop(ToolAgentLoop):
         # [FIX] 1. 立即从 kwargs 提取 UID，确保全作用域可用
         # kwargs 是从 DataProto.non_tensor_batch 中解包出来的单个样本数据
         uid = kwargs.get("uid", f"unknown_{uuid4().hex}")
+        
+        sample_id = f"{uid}_{uuid4().hex[:8]}"
+        
         messages = copy.deepcopy(list(kwargs["raw_prompt"]))
         # Initial layout image and GDS path
         multi_modal_data = copy.deepcopy(kwargs["multi_modal_data"])
@@ -193,6 +197,7 @@ class DRCAgentLoop(ToolAgentLoop):
                     # 2. 调用外置函数进行打分
                     turn_format_score = get_format_reward(text_content, available_polygons)
                     agent_data.format_score += turn_format_score
+                    agent_data.last_format_score = turn_format_score
                     # # 校验是否包含 <think> 标签
                     # if re.search(r"<think>.*?</think>", text_content, re.DOTALL):
                     #     agent_data.format_score += 1  # 乖乖思考了，加分 (W_FORMAT)
@@ -209,13 +214,23 @@ class DRCAgentLoop(ToolAgentLoop):
                     f.write(f"[{last_msg['role'].upper()}]: {last_msg['content']}")
                     f.write(f"{'='*60}\n")
             elif state == AgentState.PROCESSING_TOOLS:
+                prev_errors = agent_data.interaction._instance_dict[request_id].get("drc_errors", -1)
                 state = await self._handle_drc_tool_processing(agent_data)
+                current_errors = agent_data.interaction._instance_dict[request_id].get("drc_errors", -1)
                 turn_count = turn_count+1
                 # [新增] 完美修复，提前终止判定 (Early Stopping)
                 # ==========================================
+                if agent_data.phase == "gen":
+                    if current_errors <= prev_errors:
+                        # 错误没变少，甚至变多了！这是无效或负面动作，累计无效惩罚
+                        agent_data.format_score -= agent_data.last_format_score
+                        
                 if agent_data.phase == "fix":
+                    if current_errors >= prev_errors:
+                        # 错误没变少，甚至变多了！这是无效或负面动作，累计无效惩罚
+                        agent_data.format_score -= agent_data.last_format_score
                     # 从交互环境的字典中实时读取最新的 drc_errors
-                    current_errors = agent_data.interaction._instance_dict[request_id].get("drc_errors", -1)
+                   
                     if current_errors == 0:
                         logger.info(f"[DRCAgentLoop] UID: {uid} | Turn {turn_count}: DRC errors reached 0! Perfect fix. Terminating early.")
                         state = AgentState.TERMINATED  # 直接切断循环
@@ -234,12 +249,12 @@ class DRCAgentLoop(ToolAgentLoop):
         
         save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
         final_image = final_state.get("image")
-        final_image.save(os.path.join(save_dir, f"{uid}.png"))
+        final_image.save(os.path.join(save_dir, f"{uid}_{sample_id}.png"))
         # 2. [关键修改] Loop 结束后，保存 GDS 状态到磁盘
         # 这样 Trainer 只需要知道 UID 就能找到对应的 GDS，不需要回传路径
         
         os.makedirs(save_dir, exist_ok=True)
-        gds_save_path = os.path.join(save_dir, f"{uid}.gds")
+        gds_save_path = os.path.join(save_dir, f"{uid}_{sample_id}.gds")
         # 调用 Interaction 的保存功能 (需要确保 Interaction 有这个接口，或者直接用 component write)
         final_state = agent_data.interaction._instance_dict.get(request_id, {})
         if "component" in final_state:
@@ -272,7 +287,8 @@ class DRCAgentLoop(ToolAgentLoop):
             "num_fix_ops": agent_data.fix_ops_count,
             "final_drc_message": last_drc_message,
             "move_penalty": agent_data.move_penalty,
-            "format_score": agent_data.format_score
+            "format_score": agent_data.format_score,
+            "sample_id": sample_id,
         }
         metrics_to_return={}
         

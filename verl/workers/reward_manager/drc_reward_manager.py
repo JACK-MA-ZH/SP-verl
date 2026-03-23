@@ -33,7 +33,7 @@ class DRCRewardManager(AbstractRewardManager):
         self.C2_DRC_CLEAN_PERFECT = 10.0
         self.WC_CHALLENGE_WEIGHT = 0.2
         self.WR_REDUCTION_WEIGHT = 5.0
-        self.WP_PERTURBATION_PENALTY = 0.1
+        self.WP_PERTURBATION_PENALTY = 0.2
         self.W_FORMAT = 3 
         self.PENALTY_NO_THINK = -3.0
         # State for dynamic weighting

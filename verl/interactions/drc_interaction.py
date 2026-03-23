@@ -336,7 +336,7 @@ class DRCInteraction(BaseInteraction):
 
         except Exception as e:
             #traceback.print_exc()
-            state["move_penalty"] += 10
+            state["move_penalty"] += 1
             logger.error(f"Error executing tool: {e}")#{tool_name}
             action_feedback = f"Tool execution failed: {e}"
 

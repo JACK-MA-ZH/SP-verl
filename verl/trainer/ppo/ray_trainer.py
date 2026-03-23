@@ -968,14 +968,14 @@ class RayPPOTrainer:
         batch=batch.repeat(
                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                 )
-        new_uids = []
-        for old_uid in batch.non_tensor_batch["uid"]:
-            # 加上 8 位随机哈希后缀，例如: train_sample_001_a1b2c3d4
-            unique_suffix = uuid.uuid4().hex[:8]
-            new_uids.append(f"{old_uid}_{unique_suffix}")
+        # new_uids = []
+        # for old_uid in batch.non_tensor_batch["uid"]:
+        #     # 加上 8 位随机哈希后缀，例如: train_sample_001_a1b2c3d4
+        #     unique_suffix = uuid.uuid4().hex[:8]
+        #     new_uids.append(f"{old_uid}_{unique_suffix}")
 
-        # 覆盖掉原本全员重复的 uid 列表
-        batch.non_tensor_batch["uid"] = np.array(new_uids, dtype=object)
+        # # 覆盖掉原本全员重复的 uid 列表
+        # batch.non_tensor_batch["uid"] = np.array(new_uids, dtype=object)
         batch.non_tensor_batch["phase"] = np.array(["gen"] * len(batch), dtype=object)
         # --- STAGE 1: Generator Episode ---
         with marked_timer("step", timing_raw, color="red"):
@@ -1034,7 +1034,7 @@ class RayPPOTrainer:
 
         # 提取并复制 B 条数据给 Fixer
         selected_gen_batch = gen_batch_output[selected_indices]
-        selected_gen_batch = selected_gen_batch.repeat(repeat_times=n_rollouts, interleave=True)
+        #selected_gen_batch = selected_gen_batch.repeat(repeat_times=n_rollouts, interleave=True)
         
         
         # errors_list = gen_batch_output.non_tensor_batch.get("drc_errors_after", [0] * len(gen_batch_output))
@@ -1055,7 +1055,9 @@ class RayPPOTrainer:
         for i in range(len(selected_gen_batch)):
             
             uid = selected_gen_batch.non_tensor_batch["uid"][i]
-            generated_gds_path = os.path.join(save_dir, f"{uid}.gds")
+            real_sample_id = selected_gen_batch.non_tensor_batch["sample_id"][i]
+            
+            generated_gds_path = os.path.join(save_dir, f"{uid}_{real_sample_id}.gds")
             component = gf.import_gds(generated_gds_path,rename_duplicated_cells=True)
                 # 使用你的 drc_tool.py 中的函数进行渲染
             real_img = component_to_pil_image(component, title=f"Fixer View {uid}")
@@ -1129,7 +1131,7 @@ class RayPPOTrainer:
             unique_suffix = uuid.uuid4().hex[:8]
             # 获取当前时间字符串
             time_str = time.strftime("%Y_%m_%d__%H_%M_%S", time.localtime())
-            fixer_uids.append(f"fix_{self.global_steps}_{uid}_{unique_suffix}")
+            fixer_uids.append(f"fix_{self.global_steps}")
             fixer_raw_prompts.append(msgs)
             fixer_extra_info.append({})
 
@@ -1141,7 +1143,7 @@ class RayPPOTrainer:
         
         # 5. 手动创建 DataProto
         # 注意：batch_size 必须匹配
-        batch_size = len(batch)
+        batch_size = len(selected_gen_batch)
         
         fixer_batch = DataProto(
             batch=TensorDict({
@@ -1160,6 +1162,7 @@ class RayPPOTrainer:
         )
         fixer_batch.non_tensor_batch["phase"] = np.array(["fix"] * len(fixer_batch), dtype=object)
         # --- STAGE 3: Fixer Execution ---
+        fixer_batch = fixer_batch.repeat(repeat_times=n_rollouts, interleave=True)
         with marked_timer("fix_episode_rollout", timing_raw, color="blue"):
             if not self.async_rollout_mode:
                 fix_batch_output = self.actor_rollout_wg.generate_sequences(fixer_batch)
