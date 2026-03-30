@@ -6,7 +6,7 @@ trainer:
   project_name: drc_adversarial_rl
   experiment_name: drc_gen_vs_fix_grpo_v2
   total_epochs: 12
-  n_gpus_per_node: 1
+  n_gpus_per_node: 4
   val_before_train: False
   nnodes: 1
   save_freq: 0
@@ -21,7 +21,7 @@ data:
   #prompt_key: generation_prompt
   max_prompt_length: 8192
   max_response_length: 8192
-  train_batch_size: 1 #全局Batch Size (PPO update step size)
+  train_batch_size: 4 #全局Batch Size (PPO update step size)
   filter_overlong_prompts: True
   truncation: error
   dataloader_num_workers: 0
@@ -57,7 +57,7 @@ actor_rollout_ref:
     optim:
       lr: 3e-6
     # 关键参数：防止 Assertion Error
-    ppo_mini_batch_size: 1         # 每次 PPO 更新的数据块大小
+    ppo_mini_batch_size: 4         # 每次 PPO 更新的数据块大小
     ppo_micro_batch_size_per_gpu: 1    # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
     use_kl_loss: True
     kl_loss_coef: 0.01

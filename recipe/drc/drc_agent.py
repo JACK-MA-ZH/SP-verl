@@ -58,17 +58,17 @@ def get_format_reward(text, available_polygons):
             think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
             
             if think_match:
-                score += 0.5 # 基础格式分
+                score += 2.5 # 基础格式分
                 think_content = think_match.group(1)
                 
                 # 检查思考内容里是否提到了多边形的名字（证明它在观察环境）
                 has_polygon = any(p in think_content for p in available_polygons)
                 if has_polygon:
-                    score += 0.5 # 提到了关键实体，额外加分！
-                else:
-                    score -= 0.5 # 胡言乱语没提到多边形，扣分
+                    score += 2.5 # 提到了关键实体，额外加分！
+                # else:
+                #     score -= 0.5 # 胡言乱语没提到多边形，扣分
             else:
-                score -= 2.0 # 没写标签，重罚
+                score -= 5 # 没写标签，重罚
                 
             return score
 
