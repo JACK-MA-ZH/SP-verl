@@ -58,7 +58,7 @@ actor_rollout_ref:
       lr: 3e-6
     # 关键参数：防止 Assertion Error
     ppo_mini_batch_size: 4         # 每次 PPO 更新的数据块大小
-    ppo_micro_batch_size_per_gpu: 1    # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
+    ppo_micro_batch_size_per_gpu: 4    # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
     use_kl_loss: True
     kl_loss_coef: 0.01
     kl_loss_type: low_var_kl
@@ -75,23 +75,23 @@ actor_rollout_ref:
   # --- Rollout 配置 (vLLM / SGLang) ---
   rollout:
     name: sglang
-    gpu_memory_utilization: 0.5  # 留一半显存给 Training Actor
+    gpu_memory_utilization: 0.6  # 留一半显存给 Training Actor
     tensor_model_parallel_size: 1 # 7B模型通常需要TP=2或4
     mode: async
     # [关键] GRPO 需要多次采样来计算 Baseline
-    n: 64  # 每个 Prompt 生成 64 条回复
+    n: 16  # 每个 Prompt 生成 64 条回复
     
     # 推理时的 Batch Size
-    log_prob_micro_batch_size_per_gpu: 1
+    log_prob_micro_batch_size_per_gpu: 4
     agent:
-      num_workers: 1
+      num_workers: 16
       agent_loop_config_path: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/recipe/drc/config/agent.yaml
       default_agent_loop: drc_agent
     
     # 启用 Multi-turn Tool Support
     multi_turn:
       enable: true
-      max_assistant_turns: 5
+      max_assistant_turns: 8
       tool_config_path: verl/tools/config/drc_tools.yaml
       interaction_config_path: verl/interactions/config/drc_interaction.yaml
       format: hermes
@@ -101,7 +101,7 @@ actor_rollout_ref:
 
   # --- Ref Model 配置 (通常 Offload 到 CPU 省显存) ---
   ref:
-    log_prob_micro_batch_size_per_gpu: 1
+    log_prob_micro_batch_size_per_gpu: 4
     strategy: fsdp2
     fsdp_config:
       param_offload: True  # 将 Ref 模型参数卸载到 CPU
