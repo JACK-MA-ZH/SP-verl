@@ -1031,9 +1031,25 @@ class RayPPOTrainer:
             print(f"[Curriculum] Prompt {j}: Difficulty {self.curriculum_ratio:.2f} -> Selected {selected_error_count} errors (Pos {target_pos+1}/{len(valid_errors)})")
             
             selected_indices.append(selected_idx)
-
         # 提取并复制 B 条数据给 Fixer
-        selected_gen_batch = gen_batch_output[selected_indices]
+        selected_gen_batch = gen_batch_output[selected_indices]    
+        
+        
+            
+        #NOTE :USE ALL DATA FROM GEN, uncomment if you do not want to use all data.    
+        errors_list = gen_batch_output.non_tensor_batch.get("drc_errors_after", [0] * len(gen_batch_output))
+        # 1. 全量保留！找出所有错误数 >= 1 的样本索引
+        valid_indices = [idx for idx, err in enumerate(errors_list) if err > 0]
+        if not valid_indices:
+            print("[Trainer] Warning: No DRC errors generated in this batch. Fixer skipped.")
+            selected_gen_batch = gen_batch_output[0:0] # 兜底：空 batch
+        else:
+            print(f"[Trainer] Utilizing ALL {len(valid_indices)} generated errors for Fixer.")
+            selected_gen_batch = gen_batch_output[valid_indices]
+            
+            
+            
+        
         #selected_gen_batch = selected_gen_batch.repeat(repeat_times=n_rollouts, interleave=True)
         
         
@@ -1163,11 +1179,40 @@ class RayPPOTrainer:
         fixer_batch.non_tensor_batch["phase"] = np.array(["fix"] * len(fixer_batch), dtype=object)
         # --- STAGE 3: Fixer Execution ---
         fixer_batch = fixer_batch.repeat(repeat_times=n_rollouts, interleave=True)
+        
+        
+        #gf.clear_cache()
+        
+            
+        # UNCOMMENT FOR ALL DATA USE
+        chunk_size = 64# 如果还是 OOM，降到 16 或 8
+        fix_outputs_list = []
         with marked_timer("fix_episode_rollout", timing_raw, color="blue"):
-            if not self.async_rollout_mode:
-                fix_batch_output = self.actor_rollout_wg.generate_sequences(fixer_batch)
-            else:
-                fix_batch_output = self.async_rollout_manager.generate_sequences(fixer_batch)
+            for chunk_start in range(0, len(fixer_batch), chunk_size):
+                chunk = fixer_batch[chunk_start : chunk_start + chunk_size]
+                    
+                if not self.async_rollout_mode:
+                    chunk_out = self.actor_rollout_wg.generate_sequences(chunk)
+                else:
+                    chunk_out = self.async_rollout_manager.generate_sequences(chunk)
+                keys_to_remove = ["timing", "metrics", "reward_extra_keys"]
+                for k in keys_to_remove:
+                    chunk_out.meta_info.pop(k, None)
+                fix_outputs_list.append(chunk_out)
+                print(f"  [Rollout] Processed chunk {chunk_start}/{len(fixer_batch)}")
+                    
+            # 3. 把分批推理的结果无缝拼接回一个完整的大 Batch
+        fix_batch_output = DataProto.concat(fix_outputs_list)
+            
+            
+            
+        #UNCOMMENT FOR LIMITED DATA USE
+        # with marked_timer("fix_episode_rollout", timing_raw, color="blue"):
+        #     if not self.async_rollout_mode:
+        #         fix_batch_output = self.actor_rollout_wg.generate_sequences(fixer_batch)
+        #     else:
+        #         fix_batch_output = self.async_rollout_manager.generate_sequences(fixer_batch)
+        
             
         fix_errors_after = fix_batch_output.non_tensor_batch.get("drc_errors_after", [])
         

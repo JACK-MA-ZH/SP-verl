@@ -51,7 +51,7 @@ class DRCRewardManager(AbstractRewardManager):
         """
         # The batch is interleaved: [gen_0, fix_0, gen_1, fix_1, ...]
         batch_size = data.batch.batch_size[0]
-        assert batch_size % 2 == 0, "Batch size must be even for gen/fix pairs."
+        #assert batch_size % 2 == 0, "Batch size must be even for gen/fix pairs."
         
         track_vars = {
             "gen_n_after": [],"n_before": [], "n_after": [], "n_fix_ops": [], 
@@ -60,73 +60,74 @@ class DRCRewardManager(AbstractRewardManager):
         
         reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
         half_batch = batch_size // 2
-        for i in range(0, half_batch):
-            # Extract trajectories for one episode
-            gen_traj = data[i]
-            fix_traj = data[i + half_batch]
-            
-            # Extract metrics from trajectories
-            # These must be populated by the agent loop and trainer
-            gen_format_score = gen_traj.non_tensor_batch.get("format_score", 0.0)
-            fix_format_score = fix_traj.non_tensor_batch.get("format_score", 0.0)
+        phases = data.non_tensor_batch.get("phase", ["gen"] * batch_size)
         
-            gen_n_after=gen_traj.non_tensor_batch.get("drc_errors_after", 0)
-            n_before = fix_traj.non_tensor_batch.get("drc_errors_before", 0)
-            n_after = fix_traj.non_tensor_batch.get("drc_errors_after", 0)
-            n_fix_ops = fix_traj.non_tensor_batch.get("num_fix_ops", 0)
-            move_penalty = fix_traj.non_tensor_batch.get("move_penalty", 0)
-            # --- Calculate R_gen ---
-            r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after #if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
-           # r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
-            r_gen = r_target_hit + gen_format_score#+ r_challenge
+        for i in range(0, batch_size):
+            phase = phases[i]
+            # Extract trajectories for one episode
+            if phase == "gen":
+                gen_traj = data[i]
+                gen_format_score = gen_traj.non_tensor_batch.get("format_score", 0.0)
+                gen_n_after=gen_traj.non_tensor_batch.get("drc_errors_after", 0)
+                # --- Calculate R_gen ---
+                r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after #if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
+            # r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
+                r_gen = r_target_hit + gen_format_score#+ r_challenge
+                # --- Apply dynamic weights ---
+                final_r_gen = self.w_gen * r_gen
+                # --- Assign sparse rewards to the reward tensor ---
+                gen_response_mask = gen_traj.batch["attention_mask"][gen_traj.batch["prompts"].shape[-1]:]
+                gen_valid_len = int(gen_response_mask.sum().item())
+                if gen_valid_len > 0:
+                    reward_tensor[i, gen_valid_len - 1] = final_r_gen
+                track_vars["gen_n_after"].append(gen_n_after)
+                track_vars["r_gen"].append(r_gen)
+                track_vars["final_r_gen"].append(final_r_gen)
             
-            # --- Calculate R_fix ---
-            # if n_after == 0 and n_before!=0:
-            #     r_drc_clean = self.C2_DRC_CLEAN_PERFECT
-            # else:
-            initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)
-            r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
-            move_penalty=min(200,move_penalty)
-            r_perturbation = -self.WP_PERTURBATION_PENALTY * (n_fix_ops+move_penalty)
-            r_fix = r_drc_clean + r_perturbation + fix_format_score
+            if phase == "fix":
+                fix_traj = data[i]
+                fix_format_score = fix_traj.non_tensor_batch.get("format_score", 0.0)
+                n_before = fix_traj.non_tensor_batch.get("drc_errors_before", 0)
+                n_after = fix_traj.non_tensor_batch.get("drc_errors_after", 0)
+                n_fix_ops = fix_traj.non_tensor_batch.get("num_fix_ops", 0)
+                move_penalty = fix_traj.non_tensor_batch.get("move_penalty", 0)
+                # --- Calculate R_fix ---
+                # if n_after == 0 and n_before!=0:
+                #     r_drc_clean = self.C2_DRC_CLEAN_PERFECT
+                # else:
+                initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)
+                r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
+                move_penalty=min(200,move_penalty)
+                r_perturbation = -self.WP_PERTURBATION_PENALTY * (n_fix_ops+move_penalty)
+                r_fix = r_drc_clean + r_perturbation + fix_format_score
+                final_r_fix = self.w_fix * r_fix
+                # --- Update success history and adjust weights ---
+                is_perfect_fix = (n_after == 0) and (n_before>0)
+                self.fix_success_history.append(is_perfect_fix)
+                
+                fix_response_mask = fix_traj.batch["attention_mask"][fix_traj.batch["prompts"].shape[-1]:]
+                
+                fix_valid_len = int(fix_response_mask.sum().item())
             
-            # --- Apply dynamic weights ---
-            final_r_gen = self.w_gen * r_gen
-            final_r_fix = self.w_fix * r_fix
-            
-            # --- Update success history and adjust weights ---
-            is_perfect_fix = (n_after == 0) and (n_before>0)
-            self.fix_success_history.append(is_perfect_fix)
-            
-            
-            # --- Assign sparse rewards to the reward tensor ---
-            gen_response_mask = gen_traj.batch["attention_mask"][gen_traj.batch["prompts"].shape[-1]:]
-            fix_response_mask = fix_traj.batch["attention_mask"][fix_traj.batch["prompts"].shape[-1]:]
-            gen_valid_len = int(gen_response_mask.sum().item())
-            fix_valid_len = int(fix_response_mask.sum().item())
-            if gen_valid_len > 0:
-                reward_tensor[i, gen_valid_len - 1] = final_r_gen
-            if fix_valid_len > 0:
-                reward_tensor[i + half_batch, fix_valid_len - 1] = final_r_fix
+                if fix_valid_len > 0:
+                    reward_tensor[i, fix_valid_len - 1] = final_r_fix
 
-            track_vars["gen_n_after"].append(gen_n_after)
-            track_vars["n_before"].append(n_before)
-            track_vars["n_after"].append(n_after)
-            track_vars["n_fix_ops"].append(n_fix_ops)
-            track_vars["r_gen"].append(r_gen)
-            track_vars["r_fix"].append(r_fix)
-            track_vars["final_r_gen"].append(final_r_gen)
-            track_vars["final_r_fix"].append(final_r_fix)
+            
+                track_vars["n_before"].append(n_before)
+                track_vars["n_after"].append(n_after)
+                track_vars["n_fix_ops"].append(n_fix_ops)
+                track_vars["r_fix"].append(r_fix)
+                track_vars["final_r_fix"].append(final_r_fix)
             
             # Logging for debugging
-            if 1:#self.print_count < self.num_examine:
-                print("-" * 20)
-                print(f"Episode Pair {i}:")
-                print(f"  N_before={n_before}, N_after={n_after}, N_fix_ops={n_fix_ops}")
-                print(f"  R_gen = {r_gen:.2f}, R_fix = {r_fix:.2f}")
-                print(f"  Dynamic Weights: w_gen={self.w_gen:.2f}, w_fix={self.w_fix:.2f}")
-                print(f"  Final Rewards: R_gen={final_r_gen:.2f}, R_fix={final_r_fix:.2f}")
-                self.print_count += 1
+            # if 1:#self.print_count < self.num_examine:
+            #     print("-" * 20)
+            #     print(f"Episode Pair {i}:")
+            #     print(f"  N_before={n_before}, N_after={n_after}, N_fix_ops={n_fix_ops}")
+            #     print(f"  R_gen = {r_gen:.2f}, R_fix = {r_fix:.2f}")
+            #     print(f"  Dynamic Weights: w_gen={self.w_gen:.2f}, w_fix={self.w_fix:.2f}")
+            #     print(f"  Final Rewards: R_gen={final_r_gen:.2f}, R_fix={final_r_fix:.2f}")
+                # self.print_count += 1
         self._adjust_dynamic_weights()        
         drc_metrics = {}
         if track_vars["n_before"]: # Ensure it's not empty
@@ -141,8 +142,8 @@ class DRCRewardManager(AbstractRewardManager):
         return {"reward_tensor": reward_tensor, "drc_metrics": drc_metrics} if return_dict else reward_tensor
 
     def _adjust_dynamic_weights(self):
-        if len(self.fix_success_history) < 50: # Wait for enough history
-            return
+        # if len(self.fix_success_history) < 50: # Wait for enough history
+        #     return
             
         fix_success_rate = sum(self.fix_success_history) / len(self.fix_success_history)
         

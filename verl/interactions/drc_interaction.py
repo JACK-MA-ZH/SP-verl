@@ -11,6 +11,8 @@ import traceback
 
 import gdsfactory as gf
 from PIL import Image
+import gc # 在文件开头或这里导入垃圾回收模块
+import kfactory as kf
 
 # [CRITICAL IMPORT] 从你的工具库中导入渲染函数
 from verl.utils.drc.drc_tool import (
@@ -372,7 +374,32 @@ class DRCInteraction(BaseInteraction):
 
     async def release(self, instance_id: str, **kwargs) -> None:
         if instance_id in self._instance_dict:
-            del self._instance_dict[instance_id]
+            #del self._instance_dict[instance_id]
+            state = self._instance_dict.pop(instance_id)
+            component = state.get("component")
+            if component:
+                del component
+            
+            # 3. 显式删除图片数据 (释放大数组)
+            image = state.get("image")
+            if image:
+                del image
+                
+            del state
+            
+        # ==========================================
+        # [防 OOM 核心]：暴力清理 gdsfactory 和 klayout 的全局缓存
+        # ==========================================
+        #gf.clear_cache()
+        # try:
+        #     # 强行清理 KFactory 的全局 kcl (KLayout Cell Library) 缓存
+        #     if hasattr(kf, 'kcell') and hasattr(kf.kcell, 'kcl'):
+        #         kf.kcell.kcl.clear()
+        # except Exception as e:
+        #     logger.warning(f"Failed to clear kfactory cache: {e}")
+
+        # 强制 Python 立即进行内存垃圾回收
+        gc.collect()
 
 
 
