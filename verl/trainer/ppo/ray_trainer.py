@@ -991,7 +991,7 @@ class RayPPOTrainer:
         # --- STAGE 2: Fixer Episode Preparation ---
         # 这一步我们必须手动构建 Fixer 的 Batch，因为它不是从 DataLoader 读出来的
         
-        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
+        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts_2"
         
         # 准备列表以供后续堆叠
         fixer_input_ids = []

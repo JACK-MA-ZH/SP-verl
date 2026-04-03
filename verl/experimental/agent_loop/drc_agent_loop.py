@@ -94,7 +94,7 @@ class DRCAgentLoop(ToolAgentLoop):
         
         # 2. [关键修改] Loop 结束后，保存 GDS 状态到磁盘
         # 这样 Trainer 只需要知道 UID 就能找到对应的 GDS，不需要回传路径
-        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
+        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts_2"
         os.makedirs(save_dir, exist_ok=True)
         gds_save_path = os.path.join(save_dir, f"{uid}.gds")
         # 调用 Interaction 的保存功能 (需要确保 Interaction 有这个接口，或者直接用 component write)

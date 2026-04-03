@@ -137,7 +137,7 @@ class DRCAgentLoop(ToolAgentLoop):
                 # ==========================================
                 # 1. 打印 LLM 的输入 (当前所有的历史消息)
                 # ==========================================
-                with open('llm_output.log', 'a') as f:
+                with open('llm_output_32b.log', 'a') as f:
                     f.write(f"\n\n{'='*20} [TURN {turn_count}] LLM INPUT {'='*20}")
                 # 为了美观，可以只打印最后两三条，或者完整打印
                 for msg in agent_data.messages:
@@ -145,9 +145,9 @@ class DRCAgentLoop(ToolAgentLoop):
                     content_str = str(msg['content'])
                     # if len(content_str) > 500:
                     #     content_str = content_str[:500] + " ... [TRUNCATED]"
-                    with open('llm_output.log', 'a') as f:
+                    with open('llm_output_32b.log', 'a') as f:
                         f.write(f"[{msg['role'].upper()}]: {content_str}")
-                with open('llm_output.log', 'a') as f:
+                with open('llm_output_32b.log', 'a') as f:
                     f.write(f"{'='*60}\n")
                 
                 current_sampling_params = copy.deepcopy(sampling_params)
@@ -208,7 +208,7 @@ class DRCAgentLoop(ToolAgentLoop):
                 # ==========================================
                 # 2. 打印 LLM 的输出 (最新追加的 assistant 消息)
                 # ==========================================
-                with open('llm_output.log', 'a') as f:
+                with open('llm_output_32b.log', 'a') as f:
                     f.write(f"\n{'='*20} [TURN {turn_count}] LLM OUTPUT {'='*20}")
                     last_msg = agent_data.messages[-1]
                     f.write(f"[{last_msg['role'].upper()}]: {last_msg['content']}")
@@ -247,7 +247,7 @@ class DRCAgentLoop(ToolAgentLoop):
         agent_data.drc_errors_at_end = final_state.get("drc_errors", -1)
         agent_data.fix_ops_count = final_state.get("fix_ops_count", 0)
         
-        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts"
+        save_dir = "/inspire/hdd/global_user/wuyouran-253108540218/llm/drc_generated_layouts_2"
         final_image = final_state.get("image")
         final_image.save(os.path.join(save_dir, f"{uid}_{sample_id}.png"))
         # 2. [关键修改] Loop 结束后，保存 GDS 状态到磁盘

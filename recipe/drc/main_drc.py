@@ -7,7 +7,7 @@ from omegaconf import DictConfig, OmegaConf
 import torch.multiprocessing as mp
 
 # 检查文件是否存在并删除
-file_path = "llm_output.log"
+file_path = "llm_output_32b.log"
 if os.path.isfile(file_path):
     os.remove(file_path)
     print("文件已成功删除")
