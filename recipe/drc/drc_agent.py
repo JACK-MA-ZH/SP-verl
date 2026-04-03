@@ -289,6 +289,7 @@ class DRCAgentLoop(ToolAgentLoop):
             "move_penalty": agent_data.move_penalty,
             "format_score": agent_data.format_score,
             "sample_id": sample_id,
+            "phase": agent_data.phase
         }
         metrics_to_return={}
         
