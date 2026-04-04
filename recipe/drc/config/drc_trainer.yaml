@@ -6,7 +6,7 @@ trainer:
   project_name: drc_adversarial_rl
   experiment_name: drc_gen_vs_fix_grpo_v2
   total_epochs: 12
-  n_gpus_per_node: 8
+  n_gpus_per_node: 4
   val_before_train: False
   nnodes: 1
   save_freq: 0
@@ -77,7 +77,7 @@ actor_rollout_ref:
   rollout:
     name: vllm
     gpu_memory_utilization: 0.5  # 留一半显存给 Training Actor
-    tensor_model_parallel_size: 8 # 7B模型通常需要TP=2或4
+    tensor_model_parallel_size: 4 # 7B模型通常需要TP=2或4
     mode: async
     # [关键] GRPO 需要多次采样来计算 Baseline
     n: 16  # 每个 Prompt 生成 64 条回复
