@@ -1382,7 +1382,30 @@ class RayPPOTrainer:
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                             config=self.config.algorithm,
                         )
-
+                    if "phase" in batch.non_tensor_batch:
+                        phases = batch.non_tensor_batch["phase"]
+                        # 找到所有 Gen 样本的索引
+                        gen_indices = [i for i, p in enumerate(phases) if p == "gen"]
+                        fix_indices = [i for i, p in enumerate(phases) if p == "fix"]
+                        if len(gen_indices) > 0:
+                            # 必须转为 float 才能做小数乘法
+                            response_mask = batch.batch["response_mask"].float()
+                            
+                            # 直接将 curriculum_ratio 乘到 mask 上
+                            response_mask[gen_indices] *= self.curriculum_ratio
+                            
+                            # 写回 batch
+                            batch.batch["response_mask"] = response_mask
+                        if len(fix_indices) > 0:
+                            # 必须转为 float 才能做小数乘法
+                            response_mask = batch.batch["response_mask"].float()
+                            
+                            # 直接将 curriculum_ratio 乘到 mask 上
+                            response_mask[fix_indices] *=(1- self.curriculum_ratio)
+                            
+                            # 写回 batch
+                            batch.batch["response_mask"] = response_mask    
+                            
                     # update critic
                     if self.use_critic:
                         with marked_timer("update_critic", timing_raw, color="pink"):
