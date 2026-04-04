@@ -128,7 +128,7 @@ class DRCRewardManager(AbstractRewardManager):
             #     print(f"  Dynamic Weights: w_gen={self.w_gen:.2f}, w_fix={self.w_fix:.2f}")
             #     print(f"  Final Rewards: R_gen={final_r_gen:.2f}, R_fix={final_r_fix:.2f}")
                 # self.print_count += 1
-        self._adjust_dynamic_weights()        
+        #self._adjust_dynamic_weights()        
         drc_metrics = {}
         if track_vars["n_before"]: # Ensure it's not empty
             for key, values in track_vars.items():
@@ -147,10 +147,10 @@ class DRCRewardManager(AbstractRewardManager):
             
         fix_success_rate = sum(self.fix_success_history) / len(self.fix_success_history)
         
-        if fix_success_rate > 0.95: # Task is too easy
+        if fix_success_rate > 0.7: # Task is too easy
             self.w_gen = min(0.1, self.w_gen + 0.2)
             self.w_fix = max(0.0, self.w_fix - 0.2)
-        elif fix_success_rate < 0.50: # Task is too hard
+        elif fix_success_rate < 0.30: # Task is too hard
             self.w_gen = max(0.0, self.w_gen - 0.2)
             self.w_fix = min(0.1, self.w_fix + 0.2)
 
