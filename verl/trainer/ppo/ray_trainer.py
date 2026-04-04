@@ -321,7 +321,7 @@ class RayPPOTrainer:
         self.config = config
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
-        self.curriculum_ratio = 0.0
+        self.curriculum_ratio = 0.0001
         
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
@@ -1228,7 +1228,7 @@ class RayPPOTrainer:
                 
             # 如果 Fixer 被打爆了 (修复率 < 30%)，说明错误太多修不过来，降低难度！
             elif success_rate < 0.3:
-                self.curriculum_ratio = max(0.0, self.curriculum_ratio - 0.1)
+                self.curriculum_ratio = max(0.0001, self.curriculum_ratio - 0.1)
                 
             print(f"\n[Dynamic Curriculum] Fixer Success Rate: {success_rate*100:.1f}% | Next Difficulty Ratio adjusted to: {self.curriculum_ratio:.2f}\n")
             
