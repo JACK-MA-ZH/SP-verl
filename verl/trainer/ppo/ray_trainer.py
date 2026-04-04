@@ -1042,7 +1042,7 @@ class RayPPOTrainer:
         valid_indices = [idx for idx, err in enumerate(errors_list) if err > 0]
         if not valid_indices:
             print("[Trainer] Warning: No DRC errors generated in this batch. Fixer skipped.")
-            selected_gen_batch = gen_batch_output[0:0] # 兜底：空 batch
+            selected_gen_batch = gen_batch_output[0:2] # 兜底：空 batch
         else:
             print(f"[Trainer] Utilizing ALL {len(valid_indices)} generated errors for Fixer.")
             selected_gen_batch = gen_batch_output[valid_indices]
