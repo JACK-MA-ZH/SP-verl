@@ -1246,7 +1246,12 @@ class RayPPOTrainer:
             
         combined_batch = DataProto.concat([gen_batch_output, fix_batch_output])
         with marked_timer("ref_log_prob", timing_raw, color="cyan"):
-            ref_output = self.ref_policy_wg.compute_ref_log_prob(combined_batch)
+            if not self.ref_in_actor:
+                ref_output = self.ref_policy_wg.compute_ref_log_prob(combined_batch)
+            else:
+                ref_output = self.actor_rollout_wg.compute_ref_log_prob(combined_batch)
+                           
+           
             
             # [关键修复] 检查返回类型并提取内部的 tensor
             if isinstance(ref_output, DataProto):
