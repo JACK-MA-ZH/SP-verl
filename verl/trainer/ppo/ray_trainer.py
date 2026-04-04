@@ -1224,7 +1224,7 @@ class RayPPOTrainer:
             # 动态博弈逻辑：
             # 如果 Fixer 修复率极高 (比如 > 70%)，说明当前难度太简单，加大 Generator 错误数量！
             if success_rate > 0.7:
-                self.curriculum_ratio = min(1.0, self.curriculum_ratio + 0.1)
+                self.curriculum_ratio = min(0.9999, self.curriculum_ratio + 0.1)
                 
             # 如果 Fixer 被打爆了 (修复率 < 30%)，说明错误太多修不过来，降低难度！
             elif success_rate < 0.3:
