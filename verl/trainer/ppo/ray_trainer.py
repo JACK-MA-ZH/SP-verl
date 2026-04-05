@@ -1263,6 +1263,9 @@ class RayPPOTrainer:
             reward_result = self.reward_fn(combined_batch, return_dict=True)
             combined_batch.batch["token_level_scores"] = reward_result["reward_tensor"]
             combined_batch.batch["token_level_rewards"] = reward_result["reward_tensor"]
+            reward_result["drc_metrics"]["drc_env/curriculum_ratio"]=self.curriculum_ratio
+            reward_result["drc_metrics"]["drc_env/success_rate"]=success_rate
+            reward_result["drc_metrics"]["drc_env/len_fixer_batch"]=len(fixer_batch)
             if "drc_metrics" in reward_result:
                 combined_batch.meta_info["drc_metrics"] = reward_result["drc_metrics"]
         return combined_batch, timing_raw
