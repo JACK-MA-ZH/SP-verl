@@ -19,9 +19,9 @@ data:
   train_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/train.parquet
   val_files: /inspire/hdd/global_user/wuyouran-253108540218/llm/verl/drc_data_square/val.parquet
   #prompt_key: generation_prompt
-  max_prompt_length: 8192
+  max_prompt_length: 2048
   max_response_length: 8192
-  train_batch_size: 4 #全局Batch Size (PPO update step size)
+  train_batch_size: 1 #全局Batch Size (PPO update step size)
   filter_overlong_prompts: True
   truncation: error
   dataloader_num_workers: 0
@@ -57,7 +57,7 @@ actor_rollout_ref:
     optim:
       lr: 3e-6
     # 关键参数：防止 Assertion Error
-    ppo_mini_batch_size: 4         # 每次 PPO 更新的数据块大小
+    ppo_mini_batch_size: 1         # 每次 PPO 更新的数据块大小
     ppo_micro_batch_size_per_gpu: 4    # 单卡计算梯度的 Batch Size (显存瓶颈看这里)
     use_kl_loss: True
     kl_loss_coef: 0.01
