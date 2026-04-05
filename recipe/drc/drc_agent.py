@@ -224,7 +224,8 @@ class DRCAgentLoop(ToolAgentLoop):
                     if current_errors <= prev_errors:
                         # 错误没变少，甚至变多了！这是无效或负面动作，累计无效惩罚
                         agent_data.format_score -= agent_data.last_format_score
-                        
+                    if current_errors > prev_errors:
+                        agent_data.format_score += 5        
                 if agent_data.phase == "fix":
                     if current_errors >= prev_errors:
                         # 错误没变少，甚至变多了！这是无效或负面动作，累计无效惩罚
