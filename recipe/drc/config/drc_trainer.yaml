@@ -71,7 +71,7 @@ actor_rollout_ref:
     # FSDP 策略 (显存优化)
     fsdp_config:
       fsdp_size: 8
-      param_offload: False
+      param_offload: True
       optimizer_offload: False
       #wrap_policy:
         # transformer_layer_cls_to_wrap: [Qwen2VLDecoderLayer] # 根据模型结构自动推断，通常不需要手写
@@ -80,7 +80,7 @@ actor_rollout_ref:
   # --- Rollout 配置 (vLLM / SGLang) ---
   rollout:
     name: vllm
-    gpu_memory_utilization: 0.55  # 留一半显存给 Training Actor
+    gpu_memory_utilization: 0.4  # 留一半显存给 Training Actor
     tensor_model_parallel_size: 8 # 7B模型通常需要TP=2或4
     load_format: safetensors
     enable_chunked_prefill: False
