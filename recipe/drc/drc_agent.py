@@ -56,8 +56,12 @@ class DRCAgentData(AgentData):
 def get_format_reward(text, available_polygons):
             score = 0.0
             think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
-            
-            if think_match:
+            tool_matches = re.findall(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)
+            if len(tool_matches) == 1:
+                score += 1.0  # 乖乖只调用了一次工具，给分
+            else:
+                score -= 1.0  # 没调用工具，重罚
+            if len(think_match)==1:
                 score += 2.5 # 基础格式分
                 think_content = think_match.group(1)
                 
