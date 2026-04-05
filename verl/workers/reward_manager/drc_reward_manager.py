@@ -72,7 +72,7 @@ class DRCRewardManager(AbstractRewardManager):
                 # --- Calculate R_gen ---
                 r_target_hit = self.C1_TARGET_HIT_POSITIVE*gen_n_after #if n_before > 0 else self.C1_TARGET_HIT_NEGATIVE
             # r_challenge = self.WC_CHALLENGE_WEIGHT * n_fix_ops
-                r_gen = r_target_hit + gen_format_score#+ r_challenge
+                r_gen =  gen_format_score#+ r_challenge r_target_hit +
                 # --- Apply dynamic weights ---
                 final_r_gen = self.w_gen * r_gen
                 # --- Assign sparse rewards to the reward tensor ---
