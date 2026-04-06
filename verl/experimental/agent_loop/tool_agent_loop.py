@@ -215,9 +215,9 @@ class ToolAgentLoop(AgentLoopBase):
         """Handle the generating state: generate model response and check for tool calls."""
         add_messages: list[dict[str, Any]] = []
         if agent_data.phase == "gen":
-            max_assistant_turn=5
+            max_assistant_turns=self.max_assistant_turns-3
         else:
-            max_assistant_turn=8
+            max_assistant_turns=self.max_assistant_turns
             
         with simple_timer("generate_sequences", agent_data.metrics):
             output = await self.server_manager.generate(
