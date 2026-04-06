@@ -55,7 +55,7 @@ actor_rollout_ref:
   # --- [FIXED] PPO Actor 配置 (补全了缺失的 batch size) ---
   actor:
     optim:
-      lr: 3e-6
+      lr: 8e-7
     # 关键参数：防止 Assertion Error
     ppo_mini_batch_size: 1         # 每次 PPO 更新的数据块大小
     ppo_micro_batch_size_per_gpu: 4    # 单卡计算梯度的 Batch Size (显存瓶颈看这里)

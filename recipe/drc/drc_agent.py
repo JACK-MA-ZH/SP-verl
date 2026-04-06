@@ -55,11 +55,11 @@ class DRCAgentData(AgentData):
 
 def get_format_reward(text, available_polygons):
             score = 0.0
-            think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
+            think_match = re.findall(r"<think>(.*?)</think>", text, re.DOTALL)
             tool_matches = re.findall(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)
             if len(think_match) == 1:
                 score += 2.5 # 基础格式分
-                think_content = think_match.group(1)
+                think_content = think_match[0]
                 
                 # 检查思考内容里是否提到了多边形的名字（证明它在观察环境）
                 has_polygon = any(p in think_content for p in available_polygons)
