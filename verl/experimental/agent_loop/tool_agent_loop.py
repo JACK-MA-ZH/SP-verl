@@ -215,7 +215,7 @@ class ToolAgentLoop(AgentLoopBase):
         """Handle the generating state: generate model response and check for tool calls."""
         add_messages: list[dict[str, Any]] = []
         if agent_data.phase == "gen":
-            max_assistant_turns=self.max_assistant_turns-1
+            max_assistant_turns=self.max_assistant_turns-2
         else:
             max_assistant_turns=self.max_assistant_turns
             

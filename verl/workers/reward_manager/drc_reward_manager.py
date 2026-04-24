@@ -33,7 +33,7 @@ class DRCRewardManager(AbstractRewardManager):
         self.C2_DRC_CLEAN_PERFECT = 10.0
         self.WC_CHALLENGE_WEIGHT = 0.2
         self.WR_REDUCTION_WEIGHT = 5.0
-        self.WP_PERTURBATION_PENALTY = 0.2
+        self.WP_PERTURBATION_PENALTY = 0.3
         self.W_FORMAT = 3 
         self.PENALTY_NO_THINK = -3.0
         # State for dynamic weighting
@@ -55,7 +55,8 @@ class DRCRewardManager(AbstractRewardManager):
         
         track_vars = {
             "gen_n_after": [],"n_before": [], "n_after": [], "n_fix_ops": [], 
-            "r_gen": [], "r_fix": [], "final_r_gen": [], "final_r_fix": []
+            "r_gen": [], "r_fix": [], "final_r_gen": [], "final_r_fix": [],"move_penalty":[],
+            "fix_format_score":[],"r_drc_clean":[]
         }
         
         reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
@@ -97,9 +98,9 @@ class DRCRewardManager(AbstractRewardManager):
                 # else:
                 initial_errors_for_fix = fix_traj.non_tensor_batch.get("drc_errors_before", n_before)
                 r_drc_clean = self.WR_REDUCTION_WEIGHT * (initial_errors_for_fix - n_after)
-                move_penalty=min(200,move_penalty)
-                r_perturbation = -self.WP_PERTURBATION_PENALTY * (n_fix_ops+move_penalty)
-                r_fix = r_drc_clean + r_perturbation + fix_format_score
+                move_penalty=min(200,move_penalty) 
+                r_perturbation = -self.WP_PERTURBATION_PENALTY * (-n_fix_ops+move_penalty)
+                r_fix =  r_drc_clean +r_perturbation + fix_format_score #
                 final_r_fix = self.w_fix * r_fix
                 # --- Update success history and adjust weights ---
                 is_perfect_fix = (n_after == 0) and (n_before>0)
@@ -118,7 +119,9 @@ class DRCRewardManager(AbstractRewardManager):
                 track_vars["n_fix_ops"].append(n_fix_ops)
                 track_vars["r_fix"].append(r_fix)
                 track_vars["final_r_fix"].append(final_r_fix)
-            
+                track_vars["move_penalty"].append(move_penalty)
+                track_vars["fix_format_score"].append(fix_format_score)
+                track_vars["r_drc_clean"].append(r_drc_clean)
             # Logging for debugging
             # if 1:#self.print_count < self.num_examine:
             #     print("-" * 20)

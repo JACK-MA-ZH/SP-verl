@@ -68,7 +68,7 @@ def get_format_reward(text, available_polygons):
                 # else:
                 #     score -= 0.5 # 胡言乱语没提到多边形，扣分
             else:
-                score -= 5 # 没写标签，重罚
+                score -= 2.5 # 没写标签，重罚
             if len(tool_matches) == 1:
                 score += 1.0  # 乖乖只调用了一次工具，给分
             else:
@@ -234,7 +234,8 @@ class DRCAgentLoop(ToolAgentLoop):
                         # 错误没变少，甚至变多了！这是无效或负面动作，累计无效惩罚
                         agent_data.format_score -= agent_data.last_format_score
                     # 从交互环境的字典中实时读取最新的 drc_errors
-                   
+                    # if current_errors < prev_errors:
+                    #     agent_data.format_score += 5  
                     if current_errors == 0:
                         logger.info(f"[DRCAgentLoop] UID: {uid} | Turn {turn_count}: DRC errors reached 0! Perfect fix. Terminating early.")
                         state = AgentState.TERMINATED  # 直接切断循环
